@@ -1,0 +1,12 @@
+**/buildLocal
+**/build
+**/cmake-build-debug
+*.o
+**/SimulationData
+LVMCM/.idea/workspace.xml
+**/.idea
+**/workspace.xml
+**/TAGS
+.Rproj.user
+LVMCM_src.Rproj
+*.sh.*
