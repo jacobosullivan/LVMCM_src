@@ -39,7 +39,7 @@ The software does not need to be in the home directory to run, however data are 
 MacOS or Window users... install Linux
 
 List of dependencies (most recent compatible version):
-- Armaillo (most recent)
+- Armadillo (most recent)
 - Boost (most recent)
 - Sundials 2.7.0
 - CMake (most recent)
@@ -135,7 +135,7 @@ Y is the value of non-zero interactions (0), the second shape parameter (1), or 
 - The emigration rate and dispersal length, fixed for all species, are set using the argument `-d X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range 0 to 1.
 
 ### Environmental modelling
-- The environment is either modelled implicitly 'through the eyes of the species' or explicitly. In the latter case, selected by passing the program argument `-e X`. For X>0, X explicit environmental distributions are generated and species are allocated environmental tolerance coefficents which define the impact of a given environmental variable on their growth rate.
+- The environment is either modelled implicitly 'through the eyes of the species' or explicitly. In the latter case, selected by passing the program argument `-e X`. For X>0, X explicit environmental distributions are generated and species are allocated environmental tolerance coefficients which define the impact of a given environmental variable on their growth rate.
 
 # List of program arguments
 In the parameters below defaults are listed in square brackets
@@ -151,7 +151,7 @@ Input parameters:
 - `-f`: output folder [{} (empty string)]
 - `-g`: cap on regional diversity (use with caution, if greater that regional limits, assembly with not complete) [0]
 - `-i`: maximum number of invasions [0]
-- `-id`: job ID used for automatic checkpointing ["NA"]
+- `-id`: job ID used for automatic check pointing ["NA"]
 - `-is`: invasion size (is*S+1 invaders generated in each iteration of the assembly algorithm) [0.05]
 - `-n`: number of nodes [4]
 - `-o`: 3x output variables used in generating file names - a key parameter, experiment name, replicate number [0, DEFAULT, 0]
@@ -163,9 +163,9 @@ Input parameters:
 - `-si`: Schwartz iteration number and window size [2, 100]
 - `-sk`: environmental sensitivity shape parameter controlling the fundamental niche width [vec {0.0}]
 - `-st`: standard deviation of environmental fluctuations
-- `-t`: number of timesteps simulated between each invasion [500]
+- `-t`: number of time steps simulated between each invasion [500]
 - `-v`: the standard deviation of the environment/growth rate distribution [0.01]
-- `-x`: path to spatial newtork if not random generated (should be Armadillo matrix raw_ascii) [{} (empty string)]
+- `-x`: path to spatial network if not random generated (should be Armadillo matrix raw_ascii) [{} (empty string)]
 
 Switches
 - `-C`: set to `F` to switch off interspecific interactions between producer species
@@ -183,8 +183,8 @@ Perturbation experiments/analysis objects
 - `-F`: fragmentation/conservation area experiment
 - `-H`: harvesting experiment
 - `-K`: interative node/edge removal experiment
-- `-L`: long distance distpersal experiment
-- `-T`: generate long timeseries trajectory
+- `-L`: long distance dispersal experiment
+- `-T`: generate long time series trajectory
 - `-W`: warming experiment
 
 # Simulation output
@@ -194,14 +194,14 @@ The various model matrices will be stored in this folder with a file path which 
 For example, the assembly above will output the following matrices in the folder `/<path>/<to>/<output_directory>/SimulationData/N=32/testAssembly/<date>/`
 
 - `<date>_testAssembly(1000)1bMat0.mat`: matrix of biomasses representing final state of the metacommunity
-- `<date>_testAssembly(1000)1bMat_src0.mat`: disrete matrix with 1 corresponding to source populations, -1 to sink populations and 0 to biomasses below the detection threshold of 10^-4 biomass units.
+- `<date>_testAssembly(1000)1bMat_src0.mat`: discrete matrix with 1 corresponding to source populations, -1 to sink populations and 0 to biomasses below the detection threshold of 10^-4 biomass units.
 - `<date>_testAssembly(1000)1bMat_c0.mat`: matrix of biomasses consumer species
 - `<date>_testAssembly(1000)1bMat_c_src0.mat`: source-sink allocation consumer species
 - `<date>_testAssembly(1000)1rMat0.mat`: matrix of local intrinsic growth rates
 - `<date>_testAssembly(1000)1S0.mat`: column vector recording the regional species richness as a function of each invasion event
 - `<date>_testAssembly(1000)1cMat0.mat`: matrix of competitive overlap coefficients
 - `<date>_testAssembly(1000)1network0.mat`: cartesian coordinate of the spatial network
-- `<date>_testAssembly(1000)1dMat_n0.mat`: dispersal matrix generated as in EcoLetts paper
+- `<date>_testAssembly(1000)1dMat_n0.mat`: dispersal matrix
 - `<date>_testAssembly(1000)1envMat0.mat`: explicitly modelled environmental distributions
 - `<date>_testAssembly(1000)1tMat0.mat`: species environmental tolerances
 - `<date>_testAssembly(1000)1params0.mat`: a list of model parameters
