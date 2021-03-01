@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) {
                     case 'n' : // set normalization of dispersal model
                         a_dispNorm = atoi(argv[i]);
                         break;
- 
+
                 }
                 break;
 
@@ -433,7 +433,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (rank == 0) { // start timer and check for parameter errors
-        mpi_time1 = MPI_Wtime();
+        mpi_time1 = time(nullptr);
 
         if (!a_randGraph) { // check perfect square in case of lattice
             double srN = sqrt(a_no_nodes);
@@ -822,7 +822,7 @@ int main(int argc, char* argv[]) {
         } // assembly scope
 
         if (rank == 0) {
-            mpi_time2 = MPI_Wtime();
+            mpi_time2 = time(nullptr);
         }
     }
 

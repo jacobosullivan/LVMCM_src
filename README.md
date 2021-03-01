@@ -2,23 +2,49 @@
 ##### Jacob O'Sullivan
 j.osullivan@qmul.ac.uk | j.osullivan@zoho.com
 
-## Compilaton instructions:
+# Contents
 
-### Install dependencies/build container image
+- [Download](x)
+- [Compilation](x)
+  - [Dependencies](x)
+    - [Boost](x)
+    - [Armadillo](x)
+    - [Sundials](x)
+  - [Build executable](x)
+- [Model elements](x)
+  - [Lotka-Volterra dynamics](x)
+  - [Sampling of abiotic/biotic values](x)
+    - [Spatial structure](x)
+    - [Species ecological traits](x)
+    - [Environmental modelling](x)
+- [List of program arguments](x)
+- [Simulation output](x)
+- [Test implementation](x)
+- [The emergence of autonomous turnover](x)
+
+
+# Download
+
+Clone this repository into your home directory using the command:
+
+```
+git clone https://github.com/jacobosullivan/LVMCM_src.git
+```
+
+The software does not need to be in the home directory to run, however data are saved to the home directory by default and the accompanying R scripts assume this to be the case.
+
+# Compilation
+
+## Dependencies
+MacOS or Window users... install Linux
 
 List of dependencies (most recent compatible version):
 - Armaillo (most recent)
 - Boost (most recent)
 - Sundials 2.7.0
-- CMake 3.5.1
-- MPI (chosen distribution)
+- CMake (most recent)
 
-To run software in a container environment, build singularity container from defintion file `/LVMCM_src/LVMCM/LVMCM_mpi.def` (debootstrap may be required).
-For details see Singularity docs (https://singularity.lbl.gov/).
-
-#### Libarary install/build
-
-##### Boost
+### Boost
 
 For most recent release:
 
@@ -28,7 +54,7 @@ sudo apt-get install libboost-all-dev
 
 It is recommended to install Boost before Armadillo
 
-##### Armadillo
+### Armadillo
 
 If not present already, install LAPACK, BLAS and cmake
 ARPACK is required for sparse matrix support
@@ -53,7 +79,7 @@ See output - check that dependencies have been located
 sudo make install
 ```
 
-#### SUNDIALS 2.7
+### Sundials
 
 Download 2.7 distribution here: https://computing.llnl.gov/projects/sundials/sundials-software.
 Navigate to download location:
@@ -69,7 +95,7 @@ make
 sudo make install
 ```
 
-### Buid executable - GCC compiler
+## Build executable
 
 Navigate to the subdirectory `LVMCM_src/LVMCM` and run the following:
 
@@ -79,72 +105,39 @@ cmake ..
 make VERBOSE=1
 ```
 
-### Buid executable - Intel compiler
+This will create and executable file called `LVMCM` which can be run to initialize or load a metacommunity simulation.
 
-Intel compilers and dependencies are currently installed natively on the Apocrita cluster (btx718 user space only).
-If attempting to compile in alternative user space, I recommend using GCC as described above unless all dependencies are available.
-Note that using Intel 2020 requires a different CMakeLists.txt file.
-This is currently saved in the LVMCM repo under the filename CMakeLists_int.txt.
-To compile using Intel, first run the following `mv CMakeLists.txt CMakeLists_gcc.txt; mv CMakeLists)int.txt CMakeLists.txt`.
-Intel compilers produce an improvement in run time performance therefore if available these should be used.
+# Model elements
 
-From within btx718 userspace, the following commands load the necessary private modules:
+## Lotka-volterra dynamics
 
-```
-# load modules including cmake
-module load use.own
-module load intel intelmpi dependencies cmake
-```
+For detail on the dynamical system used to model species biomasses temporal evolution, see published material
 
-If running from an alternative user space, note the location of the Armadillo and Sundials install files and ensure cmake is pointing to the relevant directories. In the case that depenencies are installed in the folder `$HOME/install` (as in btx718 userspace), the following will build the exectuable:
+## Sampling of abiotic/biotic values
 
-```
-rm -rf build\_intel; mkdir build_intel; cd build_intel
-cmake .. \
--DARMADILLO\_LIBRARY=$HOME/install/armadillo/lib64/libarmadillo.so \
--DSUNDIALS\_NVECSERIAL_LIB:FILEPATH=$HOME/install/sundials2.7/lib/libsundials_nvecserial.so \
--DSUNDIALS\_KINSOL_LIB:FILEPATH=$HOME/install/sundials2.7/lib/libsundials_kinsol.so \
--DSUNDIALS\_CVODE_LIB:FILEPATH=$HOME/install/sundials2.7/lib/libsundials_cvode.so \
--DCMAKE\_BUILD_TYPE=Release
-make VERBOSE=1
-```
-
-This will create and exectuable file called `LVMCM` which can be run to initialize or load a metacommunity simulation.
-
-#### Lotka-volterra dynamics
-
-##### Competitive metacommunity
-
-$\frac{dB_{ix}}{dt}=B_{ix}\biggl(R_{ix}-\sum_{j=1}^{S}{C_{ij}B_{jx}}\biggr)-eB_{ix}(t)+\sum_{y\in \mathcal{N}(x)}{d(x,y)B_{iy}}$
-
-with $d(x,y)=-e\ \text{for}\ x=y$ and $\frac{e}{k_y}\text{exp}(-\delta_{xy}\ell^{-1})$ otherwise ($k$ is the degree of the node $y$ and $\delta_{xy}$ the Euclidean distance between $x$ and $y$).
-
-
-##### Biparite metacommunity
-
-$\frac{dB_{ix}^{p}}{dt}=B_{ix}^{p}\biggl(R_{ix}-\sum_{j=1}^{S^{p}}{C_{ij}B_{jx}^{p}}-\sum_{l=1}^{S^{c}}{A_{il}B_{lx}^{c}}\biggr)-eB_{ix}^{p}(t)+\sum_{y\in \mathcal{N}(x)}{d(x,y)B_{iy}^{p}}$
-
-$\frac{dB_{kx}^{c}}{dt}=\epsilon B_{kx}^{c}\biggl(\sum_{j=1}^{S^{p}}A_{kj}B_{jk}^{c}-\rho\biggr)-e B_{kx}^{c}+\sum_{y\in \mathcal{N}(x)}{d(x,y)B_{ky}^{c}}$
-
-where $\rho$ is a respiration term, $\epsilon$ the assimilation efficiency and $d(x,y)$ defined as above.
-
-#### Sampling of abiotic/biotic values
-
-##### Spatial structure:
-- The cartesian coordinates are sampled either from a 2D uniform distribution in the range $[0,\sqrt{N}]$ or, if the argument `-Lattice T` is passed to the executable, from a 2D lattice of area $N$.
+### Spatial structure
+- The cartesian coordinates are sampled either from a 2D uniform distribution or, if the argument `-R F` is passed to the executable, from a 2D lattice.
 In the latter case a square number of nodes is required.
-- For random graphs, edges are allocated using the [Gabriel](https://en.wikipedia.org/wiki/Gabriel_graph) algorithm or, if the argument `-Gab F` is passed to the executable, using a complete graph.
+- For random graphs, edges are allocated using the [Gabriel](https://en.wikipedia.org/wiki/Gabriel_graph) algorithm or, if the argument `-G F` is passed to the executable, using a complete graph.
 
-##### Species ecological traits:
-- Competition coefficients are sampled from a discrete distribution with program arguments `-c_ij X Y` representing the intesity and probability of non-zero competitive interaction coefficients, or, if the program argument `-Discr F` is passed to the exectuable, from a [beta distribution](https://en.wikipedia.org/wiki/Beta_distribution) (characterized by two shape parameters).
-- Trohpic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the _normal_ distribution set using program argument `-F` and a scaling parameter set using `-alpha`.
-- The emigration rate and dispersal length, fixed for all species, are set using the argument `-dispL X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range $[0,1]$.
+### Species ecological traits
+- The distribution from which competitive coefficients is sample is controlled using the program argument `-D` which can take the following integer values:
+  - 0: Discrete distribution
+  - 1: Beta distribution
+  - 2: Discretized beta distribution
+  - 3: Normal distribution
+  - 4: Discretized normal distribution
+- For 0, 1, and 3, two shape parameters are passed using the argument `-c X Y`.
+X is the probability of non-zero interactions (0), the first shape parameter (1), or the mean of the distribution (3).
+Y is the value of non-zero interactions (0), the second shape parameter (1), or the variance of the distribution (3).
+- For 2 and 4 and addition parameter is passed after the argument `-D`, e.g. `-D 4 0.3` which defines the probability of non-zero interactions for the discretized continuous distribution.
+- Trophic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the normal distribution set using program argument `-F` and a scaling parameter set using `-a`.
+- The emigration rate and dispersal length, fixed for all species, are set using the argument `-d X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range 0 to 1.
 
-##### Environmental modelling
-- The environment is either modelled implicitly 'through the eyes of the species' or explicitly. In the latter case, selected by passing the program argument `-envVar X`. For X>0, X explicit environmental distributions are generated and species are allocated environmental tolerance coefficents which define the impact of a given environmental variable on their growth rate.
+### Environmental modelling
+- The environment is either modelled implicitly 'through the eyes of the species' or explicitly. In the latter case, selected by passing the program argument `-e X`. For X>0, X explicit environmental distributions are generated and species are allocated environmental tolerance coefficents which define the impact of a given environmental variable on their growth rate.
 
-#### List of program arguments
-
+# List of program arguments
 In the parameters below defaults are listed in square brackets
 
 Input parameters:
@@ -166,7 +159,9 @@ Input parameters:
 - `-pp`: probability of invading a producer species, set to <1.0 for bipartite model [0.0]
 - `-r`: consumer respiration rate parameter [0.0]
 - `-s`: trophic link distribution parameter [0.0]
+- `-sc`: path to data for scaling of local interaction matrix [{} (empty string)]
 - `-si`: Schwartz iteration number and window size [2, 100]
+- `-sk`: environmental sensitivity shape parameter controlling the fundamental niche width [vec {0.0}]
 - `-st`: standard deviation of environmental fluctuations
 - `-t`: number of timesteps simulated between each invasion [500]
 - `-v`: the standard deviation of the environment/growth rate distribution [0.01]
@@ -180,9 +175,11 @@ Switches
 - `-R`: if set to `F`, a spatial network modelled using a 2D lattice
 - `-S`: if set to `T`, model with regularly write to file
 - `-SC`: if set to `T`, select symmetric competition model
+- `-SS`: if set to `T`, will generate source-sink matrix without assembling
 - `-Z`: if set to 2: all random seeds are set to 1 for reproducibility; if set to 1: only random seeds used in generating enviroment set to 1
 
 Perturbation experiments/analysis objects
+- `-B`: compute the spatio-temporal beta-diversity **after every invasion**
 - `-F`: fragmentation/conservation area experiment
 - `-H`: harvesting experiment
 - `-K`: interative node/edge removal experiment
@@ -190,19 +187,9 @@ Perturbation experiments/analysis objects
 - `-T`: generate long timeseries trajectory
 - `-W`: warming experiment
 
-#### Test implementation
+# Simulation output
 
-After compilation, navigate to the build folder and the following command:
-
-```
-./LVMCM -o 1 testComp 1 -n 16 -p 1 -i 100 -d 0.2 1.0 -c 0.3 0.3 -v 0.1 -t 1000 -Z 2 -O F"
-```
-
-This will assemble a competitive metacommunity of 16 nodes but will not write to file.
-
-#### Simulation output
-
-Once `invMax` is reached, and in the case `-O F` is _not_ passed to the executable, a folder called SimulationData will be generated as a subdirectory in `/<path>/<to>/<output_directory>/`.
+Once `invMax` is reached, and in the case `-O F` is _not_ passed to the executable, a folder called SimulationData will be generated as a subdirectory by default in the folder `~/LVMCM_src/SimulationData`, however if the argument `-f /<path>/<to>/<output>` is passed, alternative storage locations can be requested.
 The various model matrices will be stored in this folder with a file path which records the number of nodes, the experiment name, the date, the requested invasions, a key parameter and the replicate number.
 For example, the assembly above will output the following matrices in the folder `/<path>/<to>/<output_directory>/SimulationData/N=32/testAssembly/<date>/`
 
@@ -215,10 +202,39 @@ For example, the assembly above will output the following matrices in the folder
 - `<date>_testAssembly(1000)1cMat0.mat`: matrix of competitive overlap coefficients
 - `<date>_testAssembly(1000)1network0.mat`: cartesian coordinate of the spatial network
 - `<date>_testAssembly(1000)1dMat_n0.mat`: dispersal matrix generated as in EcoLetts paper
-- `<date>_testAssembly(1000)1environ0.mat`: explicitly modelled environmental distributions
+- `<date>_testAssembly(1000)1envMat0.mat`: explicitly modelled environmental distributions
 - `<date>_testAssembly(1000)1tMat0.mat`: species environmental tolerances
 - `<date>_testAssembly(1000)1params0.mat`: a list of model parameters
 
-#### Example assemblies
 
-With the repo LVMCM_src cloned into the home directory, enter an R session and run through the script LVMCM_src/LVMCM/RCode/LVMCM_example.R. Note the package dependencies in the scripts LVMCM_src/LVMCM/RCode/plotting_functions.R and LVMCM_src/LVMCM/RCode/read_results.R will need to be installed.
+# Test implementation
+
+After compilation, navigate to the build folder and the following command:
+
+```
+./LVMCM -o 1 testComp 1 -n 16 -p 1 -i 100 -d 0.2 1.0 -c 0.3 0.3 -v 0.1 -t 1000 -Z 2 -O F"
+```
+
+This will assemble a competitive metacommunity of 16 nodes but will not write to file. In case of error messages, check all dependencies have been installed.
+
+# Example assemblies: The emergence of autonomous turnover
+
+In figure S4 of O'Sullivan et al. (2021) Intrinsic ecological dynamics drive biodiversity turnover in model metacommunities we show how autonomous turnover occurs at the onset of local structural instability for various random matrices.
+Here we demonstrate how the LVMCM can be used to show this emergent phenomenon for three test cases, with A_ij sampled from
+1. A discrete distribution with c1=c2=0.3
+2. A discretized beta distribution with connectance 0.4 and mean/variance equal to 1. above
+3. A discretized normal distribution with connectance 0.4 and mean/variance equal to 1. above
+
+All spatial parameters are as in the paper.
+
+Run the following commands from the directory `~/LVMCM_src/LVMCM/build`
+
+```
+PARFILE=$HOME/LVMCM_src/LVMCM/parFiles/autonomous_turnover_example/autonomous_turnover_example_pars.txt
+./LVMCM $(sed -n "1p" $PARFILE) # assembly 1
+./LVMCM $(sed -n "2p" $PARFILE) # assembly 2
+./LVMCM $(sed -n "3p" $PARFILE) # assembly 3
+```
+
+These simulations will several hours to complete depending on the system. For the example models in the parameter file included with this repository random seeds have been fixed and corresponding output has been included in the folder `~/LVMCM_src/SimulationData`
+To reproduce the result shown in Figure S4, run the assemblies or explore the example data using the R script `~/LVMCM_src/LVMCM/RCode/autonomous_turnover_example.R`
