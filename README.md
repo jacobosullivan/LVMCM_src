@@ -2,7 +2,9 @@
 ##### Jacob O'Sullivan
 j.osullivan@qmul.ac.uk | j.osullivan@zoho.com
 
-<img align="centre" width="450" height="330" src="https://github.com/jacobosullivan/LVMCM_src/blob/master/icon.png?raw=true">
+<p align="center">
+<img width="450" height="310" src="https://github.com/jacobosullivan/LVMCM_src/blob/master/icon.png?raw=true">
+</p>
 
 # Contents
 
