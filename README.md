@@ -20,7 +20,7 @@ j.osullivan@qmul.ac.uk | j.osullivan@zoho.com
 - [List of program arguments](https://github.com/jacobosullivan/LVMCM_src#list-of-program-arguments)
 - [Simulation output](https://github.com/jacobosullivan/LVMCM_src#simulation-output)
 - [Test implementation](https://github.com/jacobosullivan/LVMCM_src#test-implementation)
-- [The emergence of autonomous turnover](https://github.com/jacobosullivan/LVMCM_src#the-emergence-of-autonomous-turnover)
+- [The emergence of autonomous turnover](https://github.com/jacobosullivan/LVMCM_src#example-assemblies-the-emergence-of-autonomous-turnover)
 
 
 # Download
@@ -188,7 +188,7 @@ Perturbation experiments/analysis objects
 
 # Simulation output
 
-Once `invMax` is reached, and in the case `-O F` is _not_ passed to the executable, a folder called SimulationData will be generated as a subdirectory by default in the folder `~/LVMCM_src/SimulationData`, however if the argument `-f /<path>/<to>/<output>` is passed, alternative storage locations can be requested.
+Once `invMax` is reached, and in the case `-O F` is not passed to the executable, a folder called SimulationData will be generated as a subdirectory by default in the folder `~/LVMCM_src/`, however if the argument `-f /<path>/<to>/<output>` is passed, alternative storage locations can be requested.
 The various model matrices will be stored in this folder with a file path which records the number of nodes, the experiment name, the date, the requested invasions, a key parameter and the replicate number.
 For example, the assembly above will output the following matrices in the folder `/<path>/<to>/<output_directory>/SimulationData/N=32/testAssembly/<date>/`
 
