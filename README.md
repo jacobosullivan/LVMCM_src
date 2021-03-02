@@ -56,8 +56,8 @@ It is recommended to install Boost before Armadillo
 
 ### Armadillo
 
-If not present already, install LAPACK, BLAS and cmake
-ARPACK is required for sparse matrix support
+If not present already, install LAPACK, BLAS and cmake.
+ARPACK is also required for sparse matrix support
 ```
 sudo apt-get install liblapack-dev
 sudo apt-get install libblas-dev
@@ -66,7 +66,7 @@ sudo apt-get install libarpack++2-dev
 ```
 
 Download tar.xz file here: http://arma.sourceforge.net/download.html
-Navigate to download location and extract, generate make files and build
+Navigate to download location and extract, generate make files and build:
 
 ```
 tar -xf armadillo-10.2.0.tar.xz
@@ -87,7 +87,6 @@ Navigate to download location:
 ```
 tar -xf sundials-2.7.0.tar.gz
 cd sundials-2.7.0
-mkdir instdir
 mkdir builddir
 cd builddir
 cmake .. # installdir defaults to /use/local unless CMAKE_INSTALL_PREFIX is set
@@ -111,17 +110,17 @@ This will create and executable file called `LVMCM` which can be run to initiali
 
 ## Lotka-volterra dynamics
 
-For detail on the dynamical system used to model species biomasses temporal evolution, see published material
+For detail on the dynamical system used to model species biomass dynamics, see published material
 
 ## Sampling of abiotic/biotic values
 
 ### Spatial structure
-- The cartesian coordinates are sampled either from a 2D uniform distribution or, if the argument `-R F` is passed to the executable, from a 2D lattice.
+- The Cartesian coordinates are sampled either from a 2D uniform distribution or, if the argument `-R F` is passed to the executable, from a 2D lattice.
 In the latter case a square number of nodes is required.
 - For random graphs, edges are allocated using the [Gabriel](https://en.wikipedia.org/wiki/Gabriel_graph) algorithm or, if the argument `-G F` is passed to the executable, using a complete graph.
 
 ### Species ecological traits
-- The distribution from which competitive coefficients is sample is controlled using the program argument `-D` which can take the following integer values:
+- The distribution from which competitive coefficients are sampled is controlled using the program argument `-D` which can take the following integer values:
   - 0: Discrete distribution
   - 1: Beta distribution
   - 2: Discretized beta distribution
@@ -130,9 +129,9 @@ In the latter case a square number of nodes is required.
 - For 0, 1, and 3, two shape parameters are passed using the argument `-c X Y`.
 X is the probability of non-zero interactions (0), the first shape parameter (1), or the mean of the distribution (3).
 Y is the value of non-zero interactions (0), the second shape parameter (1), or the variance of the distribution (3).
-- For 2 and 4 and addition parameter is passed after the argument `-D`, e.g. `-D 4 0.3` which defines the probability of non-zero interactions for the discretized continuous distribution.
-- Trophic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the normal distribution set using program argument `-F` and a scaling parameter set using `-a`.
-- The emigration rate and dispersal length, fixed for all species, are set using the argument `-d X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range 0 to 1.
+- For 2 and 4 and additional parameter is passed after the argument `-D`, e.g. `-D 4 0.3` which defines the probability of non-zero interactions for the discretized continuous distribution.
+- Trophic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the normal distribution used to generate log-normal trophic interction coefficients is set using program argument `-s` and a scaling parameter set using `-a`.
+- The emigration rate (X) and dispersal length (Y), fixed for all species, are set using the argument `-d X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range 0 to 1.
 
 ### Environmental modelling
 - The environment is either modelled implicitly 'through the eyes of the species' or explicitly. In the latter case, selected by passing the program argument `-e X`. For X>0, X explicit environmental distributions are generated and species are allocated environmental tolerance coefficients which define the impact of a given environmental variable on their growth rate.
@@ -212,10 +211,10 @@ For example, the assembly above will output the following matrices in the folder
 After compilation, navigate to the build folder and the following command:
 
 ```
-./LVMCM -o 1 testComp 1 -n 16 -p 1 -i 100 -d 0.2 1.0 -c 0.3 0.3 -v 0.1 -t 1000 -Z 2 -O F"
+./LVMCM -o 1 testComp 1 -n 16 -p 1 -i 100 -d 0.2 1.0 -c 0.3 0.3 -v 0.1 -t 1000 -Z 2 -O F
 ```
 
-This will assemble a competitive metacommunity of 16 nodes but will not write to file. In case of error messages, check all dependencies have been installed.
+This will assemble a competitive metacommunity of 16 nodes but will not write to file. In case of error messages, check all dependencies have been properly installed.
 
 # Example assemblies: The emergence of autonomous turnover
 
@@ -227,6 +226,8 @@ Here we demonstrate how the LVMCM can be used to show this emergent phenomenon f
 
 All spatial parameters are as in the paper.
 
+The program arguments required to assemble these three metacommunity models are included in the file `/LVMCM_src/LVMCM/parFiles/autonomous_turnover_example/autonomous_turnover_example_pars.txt`.
+
 Run the following commands from the directory `~/LVMCM_src/LVMCM/build`
 
 ```
@@ -236,5 +237,16 @@ PARFILE=$HOME/LVMCM_src/LVMCM/parFiles/autonomous_turnover_example/autonomous_tu
 ./LVMCM $(sed -n "3p" $PARFILE) # assembly 3
 ```
 
-These simulations will several hours to complete depending on the system. For the example models in the parameter file included with this repository random seeds have been fixed and corresponding output has been included in the folder `~/LVMCM_src/SimulationData`
-To reproduce the result shown in Figure S4, run the assemblies or explore the example data using the R script `~/LVMCM_src/LVMCM/RCode/autonomous_turnover_example.R`
+Each simulation will take several hours to complete depending on the system and the three models will generate around 2.6GB of simulation data.
+The high storage costs incurred results from generating metacommunity time series after every invasion (argument `-B` included in the parameter file).
+Typical storage required for single assemblies without time series ~10MB.
+
+The data generated by these simulations as been stored as a ~1GB tar archive on figshare.com. To download run the following command:
+
+```
+wget -O ~/LVMCM_src/autonomous_turnover_example.tar.gz --no-check-certificate https://ndownloader.figshare.com/files/26663276
+cd ~/LVMCM_src/
+tar -xf autonomous_turnover_example.tar.gz
+```
+
+Once the assemblies are complete or the example data downloaded and extracted explore the outcome using the R script `~/LVMCM_src/LVMCM/RCode/autonomous_turnover_example.R`
