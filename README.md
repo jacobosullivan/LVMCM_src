@@ -1,4 +1,4 @@
-## The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM)
+## The Lotka-Volterra Metacommunity assembly Model (LVMCM)
 ##### Jacob O'Sullivan
 j.osullivan@qmul.ac.uk | j.osullivan@zoho.com
 
