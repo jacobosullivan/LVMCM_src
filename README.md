@@ -2,6 +2,8 @@
 ##### Jacob O'Sullivan
 j.osullivan@qmul.ac.uk | j.osullivan@zoho.com
 
+![alt text](https://github.com/jacobosullivan/LVMCM_src/blob/master/icon.png?raw=true)
+
 # Contents
 
 - [Download](https://github.com/jacobosullivan/LVMCM_src#download)
