@@ -42,7 +42,7 @@ The software does not need to be in the home directory to run, however data are 
 # Compilation
 
 ## Dependencies
-MacOS or Window users... install Linux
+Note, this software was developed on Ubuntu 18.04-20.04. While compatibility with MacOS is likely, it is not guaranteed. At present we do not have a Windows distribution.
 
 List of dependencies (most recent compatible version):
 - Armadillo (most recent)
@@ -76,6 +76,7 @@ Navigate to download location and extract, generate make files and build:
 
 ```
 tar -xf armadillo-10.2.0.tar.xz
+cd armadillo-10.2.0
 cmake -DALLOW_FLEXIBLAS_LINUX=ON . # allow linking to BLAS libraries LINUX
 ```
 
@@ -95,7 +96,7 @@ tar -xf sundials-2.7.0.tar.gz
 cd sundials-2.7.0
 mkdir builddir
 cd builddir
-cmake .. # installdir defaults to /use/local unless CMAKE_INSTALL_PREFIX is set
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ ..
 make
 sudo make install
 ```
@@ -149,7 +150,7 @@ In the parameters below defaults are listed in square brackets
 
 Input parameters:
 - `-a`: trophic link scaling parameter [0.0]
-- `-b`: the full bath of the biomass matrix for a model to be imported [{} (empty string)]
+- `-b`: the full path of the biomass matrix for a model to be imported [{} (empty string)]
 - `-c`: 2x competition parameter [0.5, 0.5]
 - `-d`: emigration rate and dispersal length parameters [0.1, 0.1]
 - `-dd`: path to storage for iterative domain decomposed solution (testing purposes) [{} (empty string)]
