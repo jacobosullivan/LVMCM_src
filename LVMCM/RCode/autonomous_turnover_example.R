@@ -56,7 +56,7 @@ if (ANALYSE_DATA) {
       mean_bc <- c()
       for (x in 1:N) { # loop through sites
         Bxt <- B[,c(1:S)+((x-1)*S)]
-        Bxt[Bxt<0] <- 0
+        Bxt[Bxt<=0] <- 0
         BC <- as.matrix(vegdist(Bxt, method="bray"))
         mean_bc[x] <- mean(BC[upper.tri(BC)])
       }
@@ -65,6 +65,14 @@ if (ANALYSE_DATA) {
       BC <- as.matrix(vegdist(t(B_t)))
       beta.s[i] <- mean(BC) # record mean spatial BC dissimilarity
     }
+    
+    dat <- data.frame(inv = as.numeric(stringr::str_extract(fList, "\\d+")),
+                      it = 1:length(gamma),
+                      alpha.mn = alpha.mn,
+                      gamma = gamma,
+                      beta.t = beta.t,
+                      beta.s = beta.s,
+                      distr = rep(distr[a], length(alpha.mn)))
     dat
   }
   write.csv(dat, "~/LVMCM_src/LVMCM/autonomous_turnover_example/autonomous_turnover_example.csv", row.names=F)
@@ -73,16 +81,18 @@ if (ANALYSE_DATA) {
 }
 
 datS <- data.frame(inv=rep(dat$inv, 2),
+                   it=rep(dat$it, 2),
                    distr=rep(dat$distr,2),
                    S=c(dat$gamma, dat$alpha.mn),
                    level=rep(c("gamma", "alpha"), each=nrow(dat)))
 
 datB <- data.frame(inv=rep(dat$inv, 2),
+                   it=rep(dat$it, 2),
                    distr=rep(dat$distr,2),
                    beta=c(dat$beta.t, dat$beta.s),
                    level=rep(c("temp", "spat"), each=nrow(dat)))
 
-p1 <- ggplot(subset(datS), aes(x=inv, y=S, col=factor(distr), linetype=factor(level))) +
+p1 <- ggplot(subset(datS), aes(x=it, y=S, col=factor(distr), linetype=factor(level))) +
   geom_line() +
   theme_bw() +
   theme(panel.grid.major = element_blank(),

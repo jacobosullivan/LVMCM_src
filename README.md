@@ -26,6 +26,7 @@ A highly flexible framework for simulating spatially structured ecological commu
 - [List of program arguments](https://github.com/jacobosullivan/LVMCM_src#list-of-program-arguments)
 - [Simulation output](https://github.com/jacobosullivan/LVMCM_src#simulation-output)
 - [Test implementation](https://github.com/jacobosullivan/LVMCM_src#test-implementation)
+- [Multi-threading](https://github.com/jacobosullivan/LVMCM_src#multi-threading)
 - [The emergence of autonomous turnover](https://github.com/jacobosullivan/LVMCM_src#example-assemblies-the-emergence-of-autonomous-turnover)
 
 
@@ -37,7 +38,7 @@ Clone this repository into your home directory using the command:
 git clone https://github.com/jacobosullivan/LVMCM_src.git
 ```
 
-The software does not need to be in the home directory to run, however data are saved to the home directory by default and the accompanying R scripts assume this to be the case.
+The software does not need to be in the home directory to run. The output directory can be selected at run-time, but the default location is `~/LVMCM_src/SimulationData` and the accompanying R script, which processes data from the example assemblies, assumes this to be the case.
 
 # Compilation
 
@@ -45,10 +46,10 @@ The software does not need to be in the home directory to run, however data are 
 Note, this software was developed on Ubuntu 18.04-20.04. While compatibility with MacOS is likely, it is not guaranteed. At present we do not have a Windows distribution.
 
 List of dependencies (most recent compatible version):
-- Armadillo (most recent)
-- Boost (most recent)
-- Sundials 2.7.0
-- CMake (most recent)
+- [Boost](https://www.boost.org/) (most recent 1.75)
+- [Armadillo](http://arma.sourceforge.net/) (most recent, 10.2)
+- [CMake](https://cmake.org/) (most recent 3.2)
+- [Sundials](https://computing.llnl.gov/projects/sundials/) **2.7.0** (work to update ODE implementation is on-going)
 
 ### Boost
 
@@ -71,7 +72,7 @@ sudo apt-get install cmake
 sudo apt-get install libarpack++2-dev
 ```
 
-Download tar.xz file here: http://arma.sourceforge.net/download.html
+Download tar.xz file [here](http://arma.sourceforge.net/download.html)
 Navigate to download location and extract, generate make files and build:
 
 ```
@@ -88,7 +89,7 @@ sudo make install
 
 ### Sundials
 
-Download 2.7 distribution here: https://computing.llnl.gov/projects/sundials/sundials-software.
+Download 2.7 distribution [here](https://computing.llnl.gov/projects/sundials/sundials-software).
 Navigate to download location:
 
 ```
@@ -118,8 +119,8 @@ This will create and executable file called `LVMCM` which can be run to initiali
 ## Lotka-volterra dynamics
 
 For details on the dynamical system used to model species biomass dynamics, see published material:
-- https://onlinelibrary.wiley.com/doi/abs/10.1111/ele.13294
-- https://www.biorxiv.org/content/10.1101/2020.05.22.110262v1
+- O'Sullivan et al. (2019) [Metacommunity‐scale biodiversity regulation and the self‐organised emergence of macroecological patterns](https://onlinelibrary.wiley.com/doi/abs/10.1111/ele.13294)
+- O'Sullivan et al. (2021) [Intrinsic ecological dynamics drive biodiversity turnover in model metacommunities](https://www.biorxiv.org/content/10.1101/2020.05.22.110262v1)
 
 ## Sampling of abiotic/biotic values
 
@@ -139,7 +140,7 @@ In the latter case a square number of nodes is required.
 X is the probability of non-zero interactions (0), the first shape parameter (1), or the mean of the distribution (3).
 Y is the value of non-zero interactions (0), the second shape parameter (1), or the variance of the distribution (3).
 - For 2 and 4 and additional parameter is passed after the argument `-D`, e.g. `-D 4 0.3` which defines the probability of non-zero interactions for the discretized continuous distribution.
-- Trophic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the normal distribution used to generate log-normal trophic interction coefficients is set using program argument `-s` and a scaling parameter set using `-a`.
+- Trophic links are sampled from a log normal distribution characterized by two parameters, the standard deviation of the normal distribution used to generate log-normal trophic interaction coefficients is set using program argument `-s` and a scaling parameter set using `-a`.
 - The emigration rate (X) and dispersal length (Y), fixed for all species, are set using the argument `-d X Y`. If the emigration rate is set to -1.0, each species will be allocated a unique emigration rate in the range 0 to 1.
 
 ### Environmental modelling
@@ -214,6 +215,7 @@ For example, the assembly above will output the following matrices in the folder
 - `<date>_testAssembly(1000)1tMat0.mat`: species environmental tolerances
 - `<date>_testAssembly(1000)1params0.mat`: a list of model parameters
 
+Note, not all of the above are generated in each assembly. For example, competitive metacommunities do not include consumer biomass matrices. Only matrices with non-zero dimensions during simulation are output.
 
 # Test implementation
 
@@ -225,9 +227,21 @@ After compilation, navigate to the build folder and the following command:
 
 This will assemble a competitive metacommunity of 16 nodes but will not write to file. In case of error messages, check all dependencies have been properly installed.
 
+# Multi-threading
+
+The Armadillo linear algebra library allows multi-threaded, shared memory parallelisation of matrix operations via [LAPACK, BLAS and high speed replacements (e.g. OpenBLAS, MKL)](http://arma.sourceforge.net/faq.html#dependencies). These should automatically be located by the CMake installer when building source code, however if stored in a non-standard location this may need to be explicitly defined when compiling. Note that the all creation threads and allocation of work is done automatically by the library and you may not find multi-threading is activated for small system (matrix) sizes.
+
+To set the number of OpenBLAS threads run the following command prior to execution of the model sofware:
+
+```
+export OPENBLAS_NUM_THREADS=X
+```
+
+with `X` the desired (maximum) number of threads.
+
 # Example assemblies: The emergence of autonomous turnover
 
-In figure S4 of O'Sullivan et al. (2021) Intrinsic ecological dynamics drive biodiversity turnover in model metacommunities we show how autonomous turnover occurs at the onset of local structural instability for various random matrices.
+In figure S4 of O'Sullivan et al. (2021) "Intrinsic ecological dynamics drive biodiversity turnover in model metacommunities" we show how autonomous turnover occurs at the onset of local structural instability for various random matrices.
 Here we demonstrate how the LVMCM can be used to show this emergent phenomenon for three test cases, with A_ij sampled from
 1. A discrete distribution with c1=c2=0.3
 2. A discretized beta distribution with connectance 0.4 and mean/variance equal to 1. above
@@ -247,12 +261,12 @@ PARFILE=$HOME/LVMCM_src/LVMCM/parFiles/autonomous_turnover_example/autonomous_tu
 ```
 
 Each simulation will take several hours to complete depending on the system and the three models will generate around 2.6GB of simulation data.
-The high storage costs incurred results from generating metacommunity time series after every invasion (argument `-B` included in the parameter file).
-Typical storage required for single assemblies without time series ~10MB.
+
+Note the example assemblies explore the rate of [autonomous turnover](https://www.biorxiv.org/content/10.1101/2020.05.22.110262v1) as a function of local diversity saturation. In the example assemblies, we show how the emergence of autonomous turnover coincides with the onset of local diversity limits via ecological structural instability. This requires generating and storing time series (at low temporal resolution for efficiency) after each successive iteration of the invasion algorithm (experiment selected via the argument `-B` included in the parameter file). Such experiments require large amounts of storage. Single assemblies recorded at the end state only and without time series typically require ~10MB of uncompressed storage, though this is of course sensitive to system size.
 
 To run these simulations in parallel on a HPC system compatible with the Oracle (Sun) Grid Engine system submit the file `~/LVMCM_src/LVMCM/shFiles/autonomous_turnover_example.sh` to the scheduler with the `qsub` command or equivalent.
 
-The data generated by these simulations has been stored as a ~1GB tar archive on figshare.com. To download run the following command:
+The data generated by these simulations has been stored as a ~1GB tar archive on [figshare.com](https://figshare.com/articles/dataset/Intrinsic_ecological_dynamics_drive_biodiversity_turnover_in_model_metacommunities_Supporting_data/14139644). To download run the following command:
 
 ```
 wget -O ~/LVMCM_src/autonomous_turnover_example.tar.gz --no-check-certificate https://ndownloader.figshare.com/files/26663276
