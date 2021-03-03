@@ -92,22 +92,52 @@ datB <- data.frame(inv=rep(dat$inv, 2),
                    beta=c(dat$beta.t, dat$beta.s),
                    level=rep(c("temp", "spat"), each=nrow(dat)))
 
-p1 <- ggplot(subset(datS), aes(x=it, y=S, col=factor(distr), linetype=factor(level))) +
+### Gen Fig 5
+threshold <- min(which(subset(datB, level=="temp" & distr=="discr")$beta > 1e-2))
+p5A <- ggplot(subset(datS, distr=="discr"), aes(x=it, y=S, linetype=factor(level))) +
+  geom_vline(xintercept = dat$it[threshold], linetype=2, col="grey") +
   geom_line() +
   theme_bw() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank()) +
   scale_linetype_manual(values=c(3,1), labels=c(expression(bar(alpha)[src]), expression(gamma))) +
-  labs(x='0.1S + 1 Invasions', y="Richness", col="Distribution", linetype="") +
-  scale_y_continuous(trans="log10")
-
-p2 <- ggplot(datB, aes(x=inv, y=beta, col=factor(distr), linetype=factor(level))) +
+  labs(x="Time (iterations of assembly model)", y="Species richness", col="Distribution", linetype="") +
+  scale_y_continuous(trans="log10") +
+  scale_x_continuous(limits=c(0,150))
+  
+p5B <- ggplot(subset(datB, distr=="discr"), aes(x=it, y=beta, linetype=factor(level))) +
+  geom_vline(xintercept = dat$it[threshold], linetype=2, col="grey") +
   geom_line() +
   theme_bw() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank()) +
   scale_y_continuous(limits=c(0,1)) +
-  scale_linetype_manual(values=c(1,3), labels=c(expression(beta[s]), expression(beta[t]))) +
-  labs(x='0.1S + 1 Invasions', y="Mean BC dissimilarity", col="Distribution", linetype="")
+  scale_linetype_manual(values=c(1,3), labels=c(expression(bar(beta)[s]), expression(bar(beta)[t]))) +
+  labs(x="Time (iterations of assembly model)", y="Mean BC dissimilarity", col="Distribution", linetype="")
 
-grid.arrange(p1,p2)
+grid.arrange(p5A,p5B,ncol=2)
+
+### Gen Fig S4
+pS4A <- ggplot(datS, aes(x=it, y=S, col=factor(distr), linetype=factor(level))) +
+  geom_line() +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  scale_linetype_manual(values=c(3,1), labels=c(expression(bar(alpha)[src]), expression(gamma))) +
+  scale_color_manual(values=c("#F8766D", "#00BA38", "#619CFF"), labels=c("B", "D", "N")) +
+  labs(x="Time (iterations of assembly model)", y="Species richness", col="Distribution", linetype="") +
+  scale_y_continuous(trans="log10") +
+  scale_x_continuous(limits=c(0,150))
+
+pS4B <- ggplot(datB, aes(x=it, y=beta, col=factor(distr), linetype=factor(level))) +
+  geom_line() +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values=c("#F8766D", "#00BA38", "#619CFF"), labels=c("B", "D", "N")) +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_linetype_manual(values=c(1,3), labels=c(expression(bar(beta)[s]), expression(bar(beta)[t]))) +
+  labs(x="Time (iterations of assembly model)", y="Mean BC dissimilarity", col="Distribution", linetype="")
+
+grid.arrange(pS4A,pS4B, ncol=2)
+
