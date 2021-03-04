@@ -60,11 +60,8 @@ public:
     int S_p, S_c; // resident species diversity
     // matrix objects
     mat *bMat_p {}; // producer biomass matrix
-//    mat *bMat_c {}; // consumer biomass matrix
     mat *emMat_p {}; // producer biomass matrix
-//    mat *emMat_c {}; // consumer biomass matrix
     const mat *uMat_p {}; // producer interface state
-//    const mat *uMat_c {}; // consumer interface state
 #ifdef SPARSE_IMAT
     sp_mat *cMat; // producer interaction matrix (sparse)
 #else
@@ -72,7 +69,6 @@ public:
 #endif
     vec *scVec {}; // local interspecific interaction scaling
     vec *scVec_prime {}; // local intraspecific interaction scaling
-//    mat *aMat {}; // trophic interaction matrix
     mat *rMat {}; // producer growth rate matrix
     mat *efMat {}; // environmental fluctuation matrix
     mat *dMat {}; // regional dispersal operator

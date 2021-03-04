@@ -1,34 +1,43 @@
 # LVMCM reference manual
 ***
-## Hierarchical structure of LVMCM classes
-<p align="center">
-<img src="LVMCM_class_structure.png" width=500px/>
 
 # Table of contents
-1. [Topography](#topography)
-2. [Species](#species)
+1. [Topography](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#topography-)
+2. [Species](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species-)
+2. [CommunityDynamics](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#communitydynamics-)
+2. [Metacommunity](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species-)
 
 ***
-## Topography <a name="topography"></a>
+# Topography <a name="topography"></a>
 
 ```
 class Topography {
 public:
 // members
+    unsigned int subdomain = 0; // subdomain identifier
+    uvec subdom_nodes; // subdomain node indices
+
     // parameters
     int no_nodes; // number of nodes (patches) in graph (metacommunity)
     int bisec; // number of bisections for domain decomposition
     int envVar; // number of environmental variables
     double var_e; // variance of the environmental distribution (implicit or explicit)
     double phi; // environmental autocorrelation length
+    double T_int; // Intercept of linear temperature gradient
+    string xMatFileName; // path to file name for imported network
+    string scMatFileName; // path to file name for imported local scaling
+    vec skVec; // vector of shape parameters defining environmental sensitivity
 
     // switches
     bool randGraph = true; // switch between random graph (1) and lattice (0)
     bool gabriel = true; // switch between gabriel (1) and complete graph (0)
+    bool consArea_multiplicative; // switch for selecting additive of multiplicative for of perturbation in 'developed' area
 
     // matrix objects
     mat network; // x,y coords of nodes
     mat distMat; // euclidean distances between nodes
+    mat sigEVec; // Eigenvectors of spatial covariance matrix
+    mat sigEVal; // Eigenvalues of spatial covariance matrix
     mat adjMat; // spatial adjacency matrix
     uvec fVec; // indicator vector for domain decomposition
     uvec cFVec; // cumilatively count nodes in subdomains
@@ -36,13 +45,18 @@ public:
     uvec adjIF; // adjacent interface nodes
     mat envMat; // envVarxN matrix encoding the spatial distribution in enviromental variables
 
+    vec consArea_bin; // binary vector for allocating conservation area
+    vec scVec; // local interspecific interaction scaling
+    vec scVec_prime; // local intraspecific interaction scaling
+
 // methods
-    // landscape modelling
+    // topo modelling
     void genNetwork(); // generate random network
     void genDistMat(); // generate distance matrix
     void genAdjMat(); // generate adjacency matrix
     void genDomainDecomp(mat netImprtd = {}); // domain decomposition algorithm
-    void genEnvironment(); // Samples from 4 GRFs and stores values in environment matrix
+    void genEnvironment(); // Samples from envVar GRFs and stores values in environment matrix
+    void genTempGrad(); // generate linear temperature gradient T(x) = T_int - sqrt(N)*x
 
 // (default) constructor
     Topography() {}
@@ -50,12 +64,9 @@ public:
 // (default) deconstructor
     ~Topography() {}
 };
-
 ```
-#### Methods:
-<a id='gennetwork'/>
-#### `void genNetwork()`
-*Generate the spatial network*
+## Methods:
+`genNetwork()` *Generate the spatial network*
 
 1. Generate the cartesian coordinates of metacommunity nodes, sampling from a model landscape of side length `sqrt(no_nodes)`.
 	- `if(randGraph)` randomly sample coordinates from a uniform distribution.
@@ -65,23 +76,17 @@ public:
 
 3. Generate distance and adjacency matrices by calling `genDistMat()` and `genAdjMat()`.
 
-<a id='genDistMat' />
-#### `void genDistMat()`
-*Generate the distance matrix*
+`void genDistMat()` *Generate the distance matrix*
 
 1. Generate distance matrix whose elements are the Euclidean distances of the spatial network.
 
-<a id='genAdjMat' />
-#### `void genAdjMat()`
-*Generate spatial adjacency matrix*
+`void genAdjMat()` *Generate spatial adjacency matrix*
 
 1. Generate adjancy matrix of planar graph
 	- `if (gabriel)`, by application of the [Gabriel algorithm](https://en.wikipedia.org/wiki/Gabriel_graph) which assigns edges between nodes x and y **if** there are no nodes z within the circles whose diameter is defined by the line joining x and y.
 	- `if (!gabriel)`, assign all off-diagonal elements to 1 (complete graph).
 
-<a id='genEnvironment' />
-#### `void genEnvironment()`
-*Generate `envVar` independent environmental distributions*
+`void genEnvironment()` *Generate `envVar` independent environmental distributions*
 
 1. Generate and decomposes the landcape covariance matrix, autocorrelation length, `phi`.
 2. Generate `no_nodes` random normal variables.
@@ -90,12 +95,7 @@ public:
 	- variance of random field set to 1 [CHECK]
 4. Stores `envVar` distributions in `envMat`.
 
-<p align="center">
-<img src="R_i_complete.png" width=500px />
-
-<a id='genDomainDecomposition' />
-#### `void genDomainDecomposition()`
-*Decompose the spatial network for parellelization using recursive spectral bisection*
+`void genDomainDecomposition()` *Decompose the spatial network for parellelization using recursive spectral bisection*
 
 1. Generate graph by calling `genNetwork()`.
 2. Generate the [Graph Laplacian](https://en.wikipedia.org/wiki/Laplacian_matrix), `lMat = dMat - wMat;` for each of the current subdomains (initially the whole domain) in turn by computing the:
@@ -109,22 +109,19 @@ public:
 5. Re-order the network by sub-domain allocation. This means that all columns corresponding to a given sub-domain in the spatially explicit matrix objects will be clustered together - required for the `MPI_Allgather` implementation.
 8. 'Naming' of the first subdomains reset to 0 so that the indicator vector can be used to index c++ objects.
 9. If required by the experiment, the environmental distribution is generated by calling `genEnvironment();`
-<p align="center">
-<img src="6_fold_bisection.png" width=500px />
-***
 
-### Species <a name="species"></a>
+# Species
 
 ```
 class Species: public Topography {
 public:
-// Members
-    Topography landscape; // 'topography' nested within 'species'
+// members
+    Topography topo; // 'topography' nested within 'species'
 
-    // Parameters
+    // parameters
     double c1; // interspecific competition parameter 1 - (disc: c_ij; cont: alpha)
     double c2; // interspecific competition parameter 2 - (disc: P(c_ij); cont: beta)
-    double kPacity = 1;
+    double c3; // interspecific competition parameter 3 - connectance for continuously distributed A_ij
     double rho; // consumer mortality
     double sigma; // standard deviation log-normal attack rate distribution
     double alpha; // base attack rate
@@ -132,103 +129,99 @@ public:
     double emRate; // emigration rate
     double dispL; // dispersal length
     double thresh = 1e-4; // detection/extinction threshold
-    double sigma_t = 0.1; // standard deviation of Ohrstein-Uhlenbeck process
-
-    // Switches
+    double sigma_t = 0.05; // standard deviation of Ohrstein-Uhlenbeck process
+    double omega = 0.5; // parameter controlling the width of the temperature niche
+    double delta_g = 2.0; // (0.5x) proprtional difference between range in environmental and environmental optima
+    double sigma_r = 0.25; // standard deviation of white noise added to quadratic environmental response function
+    // switches
     bool prodComp = true; // select producer competition on/off
-    bool discr_c_ij = true; // select discrete/continuous c_ij
+    int comp_dist = 0; // select competition distribution: 0 - discrete, 1 - pure beta, 2 - discretized beta
+    bool symComp = false; // select symmetric competition
+    int dispNorm = 0; // effort (0), degree normalized (1) or passive dispersal (2)
 
-    // Matrix objects
+    // matrix objects
     mat bMat_p; // PxN biomass matrix - producers
-    mat bMat_c; // CxN biomass matrix - consumers
+    mat bavMat_p; // PxN biomass average matrix - producers
     mat bMat_p_src; // PxN biomass matrix - producers, source only
-    mat bMat_c_src; // CxN biomass matrix - consumers, source only
     mat rMat; // PxN r matrix - producers
+    mat sMat; // PxN r matrix ignoring temperature dependence - producers
     mat cMat; // PxP competitive overlap matrix - producers
-    mat aMat; // PxC feeding interaction matrix
     mat uMat_p; // fixed unknowns - producers
-    mat uMat_c; // fixed unknowns - consumers
-	mat tMat; // environmental tolerances for explicit aboitic modelling
+    mat tMat; // environmental tolerances for explicit aboitic modelling
     mat dMat_n; // (sub)domain dispersal matrix
     mat dMat_m; // inter-subdomain dispersal matrix
+    mat emMat_p; // species specific emigration rates - producers
     mat ouMat; // Ohrstein-Uhlenback process
     mat efMat; // environmental fluctuations centred on 0 for perturbing R
+    vec bias; // species specific bias of environmental fluctuation
+    mat gMat; // Sxl matrix of species environmental optima
 
-    // Storage objects
+    // storage objects
     mat trajectories; // matrix that will store the trajectories for analysis
-    mat abioTurnover; // matrix that will store time dependent growth rate matrices during relaxation
+    mat fluctuations; // matrix that will store time dependent growth rate matrices during relaxation
     umat sppRichness; // vector recording species richness as a function of time T
 
-    // Counters
+    // counters
     int invasion = 0; // counter used for recording number of invasions
+    int invEvent = 0; // number of invasion events
     int inv0 = 0; // record number invasions at import
-    int S_p; // producer species richness
-    int S_c; // consumer species richness
+    int S_p = 0; // producer species richness
+    int S_c = 0; // consumer species richness
+    int I_p = 0; // counter for multispecies invasions
+    int I_c = 0; // counter for multispecies invasions
 
-// Methods
-    // Species modelling
-    void genDispMat(); // generates dispersal matrix
-    mat genRDistImp(rowvec ZVec = {}); // generates a spatially correlated random field of maximum internal growth rates, random variables can be passed from outside
-    mat genRDistExp(); // generates random specific environmental tolerance vector and uses to generate r_i
-    void resetRDistExp(); // regenerate rMat after changing environment
-    void ouProcess(); // updates efMat for modelling temporal abiotic turnover
-    void invade(int port, int trophLev, bool test = true); // adds new producer (trophLev=0) or cosumer (1) to specified 'port' patch
+// methods
+    // species modelling
+    void genDispMat(); // generate dispersal matrix
+    mat genRVec(rowvec zVecExt = {}); // generate a spatially correlated random field of maximum internal growth rates, random variables can be passed from outside
+    mat genRVecTemp(); // generate a spatially correlated random field mapped onto the output of a temperature response function
+    mat genRVecQuad(); // generate growth rate vector based on quadratic environmental response function
+    void updateRVecTemp(); // regenerate internal growth rate matrix after discrete warming event
+    void ouProcess(); // updates efMat for modelling temporal abiotic turnover of temporal autocorrelation sigma_t, and bias mu
+    mat genRVecERF(); // generate random specific environmental tolerance vector (outcome of implicit Environmental Response Function) and use to generate r_i
+    void invade(int trophLev, bool test = true); // add new producer (trophLev=0) or cosumer (1) to specified 'port' patch
     field<uvec> extinct(int wholeDom=1, uvec ind_p = {}, uvec ind_c = {}); // remove extinct species, wholeDom flag to indicate if species testing required (whole domain only)
-    void subSet(int domain); // subsets whole domain objects into designated subdomain objects
+    void subSet(int domain); // subset whole domain objects into designated subdomain objects
 
-    // Default constructor
+    // (default) constructor
     Species () {}
 
-    // Default deconstructor
+    // (default) deconstructor
     ~Species () {}
 };
 ```
-#### Methods:
-<a id='genDispMat' />
-#### `void genDispMat()`
-*generate the dispersal operator based on distance and adjacency matrices*
+## Methods:
+`void genDispMat()` *generate the dispersal operator based on distance and adjacency matrices*
 
-1. Transform the spatial distance matrix using exponetial dispersal kernel and characterisic dispersal length`
-2. Element-wise multiplication by adjaceny marix
+1. Transform the spatial distance matrix using exponential dispersal kernel and characteristic dispersal length
+2. Element-wise multiplication by adjacency matrix
 3. Normalize dispersal matrix
 4. Assign emigration terms (-e) to diagonal
 
-<a id='genRDistImp' />
-#### `mat genRDistImp(rowvec ZVec = {})`
-*add a spatially autocorrelated growth rate vector to the matrix R*
+`mat genRVec(rowvec ZVec = {})` *add a spatially autocorrelated growth rate vector to the matrix R*
 
 Algorithm equivalent to `topography::genEnvironment()` above, returns single growth rate row vector.
 Argument ZVec allows random variables to be explicitly passed to the function.
 
-<a id='genRDistExp' />
-#### `mat genRDistExp()`
-*add a spatially autocorrelated growth rate vector to the matrix R with R_ix, a function of the explicity modelled environment at location x*
+`mat genRVecTemp()` *models a 1D temperature gradient across the landscape. Growth rates generated by reference to randomly sampled temperature optima*
 
 1. Sample species' numerical tolerances to environmental variables from a spherical distribution
 2. Compute the growth rate vector as the matrix product of the tolerance vector and the spatially explicit environmental distribution
 3. Store tolerances in `tMat` and return growth rate vector
 
-<p align="center">
-<img src="tMatrMat.png" width=500px />
 
-<a id='resetRDistExp' />
-#### `void resetRDistExp()`
-*regenerate the matrix R after perturbation to the explicitly modelled abiotic environment*
+`void updateRVecTemp()` *regenerate the matrix R after perturbation to the explicitly modelled abiotic environment*
 
 1. Update growth rates following perturbation of explicitly modelled environment.
 
-<a id='ouProcess' />
-#### `void ouProcess()`
-*models temporal abiotic fluctuations using an Ohrstein-Uhlenbeck process*
+`void ouProcess()` *models temporal abiotic fluctuations using an Ohrstein-Uhlenbeck process*
 
 1. Generate an NxS matrix of standard normal random number_of_variables
 2. Advance the OU process stored in `ouMat` according to OU(t)
  = (OU(t-1) + sigma_t * Z) / sqrt(1 + sigma_t*sigma_t), where `sigma_t` controls the temporal autocorrelation of the process.
 3. Pass the updated state of the OU process to the function `genRDistImp()` which returns a spatio-temporally correlated perturbation to the growth rate vector, stored in `efMat`.
 
-<a id='invade' />
-#### `void invade(int port, int trophLev, bool test)`
-*model an invasion by sampling ecological coefficeints and updating the matrix objects*
+`void invade(int port, int trophLev, bool test)` *model an invasion by sampling ecological coefficeints and updating the matrix objects*
 
 `if (trophLev == 0)` generate a producer species:
 
@@ -237,17 +230,18 @@ Argument ZVec allows random variables to be explicitly passed to the function.
 	- `genRDistImp()` or `genRDistExp()`
 3. In the case of bipartit models add a row to `aMat`, sampling from log normal distribution
 4. In the case the model includes direct competition between producer species, add row/col to `cMat`.
-	- `if (discr_c_ij == 1)` sample from a discrete distribution with probability of a non-zero element `c1` and magnitude `c2`.
-	- `else if (discr_c_ij == 0)` sample from a continuous beta distribution with shape parameters `c1` and `c2`
+	- `if (comp_distr == 0)` sample from a discrete distribution with probability of a non-zero element `c1` and magnitude `c2`.
+	- `else if (comp_distr == 1)` sample from a continuous beta distribution with shape parameters `c1` and `c2`
+  - `else if (comp_distr == 2)` sample from a discretised beta distribution with shape parameters `c1` and `c2` and connectance `c3`
+  - `else if (comp_distr == 3)` sample from a normal distribution with mean and standard deviation `c1` and `c2`
+  - `else if (comp_distr == 4)` sample from a discretised normal distribution with mean and standard deviation `c1` and `c2` and connectance `c3`
 
 `if (trophLev == 1)` generate a consumer species
 
 1. Add zero vector to `bMat_p` and add `inv = 1e-6` biomass units to a random node
 2. Add col to `aMat` sampling from log normal distribution:
 
-<a id='extinct' />
-#### `field<uvec> extinct(int invade = 1, uvec ind_p = {}, uvec ind_c = {}, int wholeDom=1)`
-*check for and remove regionally extinct species*
+`field<uvec> extinct(int invade = 1, uvec ind_p = {}, uvec ind_c = {}, int wholeDom=1)` *check for and remove regionally extinct species*
 
 `if (wholeDom == 1)` scans for extinct Species
 
@@ -259,9 +253,7 @@ Argument ZVec allows random variables to be explicitly passed to the function.
 
 1. Rows/cols of corresponding model objects are shed
 
-<a id='genSubSet' />
-#### `void subSet(int domain)`
-*subset spatially resolved matrix objects by subdomain*
+`void subSet(int domain)` *subset spatially resolved matrix objects by subdomain*
 
 1. Extract column indices corresponding to the focal subdomain and subset matrix objects accordingly
 2. Compute lists of intra- and inter-subdomain edges and store in `intIF` and `adjIF` respectively
@@ -270,57 +262,58 @@ Argument ZVec allows random variables to be explicitly passed to the function.
 
 ***
 
-### CommunityDynamics
+# CommunityDynamics
 
 ```
 class CommunityDynamics : public ODE_dynamical_object {
+private:
+    // Matrices to be pre-allocated before integration:
+    sp_mat dMat_n_sp;
+    sp_mat dMat_sp;
+    mat prodDisp;
+    mat consDisp;
 public:
-// Members
-    // Matrix objects
-    mat *bMat_p {};
-    mat *bMat_c {};
-    const mat *uMat_p {};
-    const mat *uMat_c {};
+// members
+    bool testing = false; // switch for invader testing (intrasp, disp switched off)
+    int S_p, S_c; // resident species diversity
+    // matrix objects
+    mat *bMat_p {}; // producer biomass matrix
+    mat *emMat_p {}; // producer biomass matrix
+    const mat *uMat_p {}; // producer interface state
 #ifdef SPARSE_IMAT
-    sp_mat *cMat;
+    sp_mat *cMat; // producer interaction matrix (sparse)
 #else
-    mat *cMat {};
+    mat *cMat {}; // producer interaction matrix
 #endif
-    mat *aMat {};
-    mat *rMat {};
-    mat *efMat {};
-    mat *dMat {};
-    mat *dMat_n {};
-    mat *dMat_m {};
-    double *rho {};
-    double *kPacity {};
-    double *k_inverse {}; // remove, place in dynamics()
+    vec *scVec {}; // local interspecific interaction scaling
+    vec *scVec_prime {}; // local intraspecific interaction scaling
+    mat *rMat {}; // producer growth rate matrix
+    mat *efMat {}; // environmental fluctuation matrix
+    mat *dMat {}; // regional dispersal operator
+    mat *dMat_n {}; // subdomain dispersal operator
+    mat *dMat_m {}; // inter-subdomain dispersal operator
+    double *rho {}; // consumer respiration rate
 
-// Methods
+// methods
     virtual int dynamics(ODE_vector const & state, ODE_vector & time_derivative); // CVode dynamical object
     virtual void write_state_to(ODE_vector & state) const; // reads state variables into ODE_vector 'state'
     virtual void read_state_from(const ODE_vector & state); // writes state to shared memory object bMat_p/c
     virtual int number_of_variables() const; // computes number of state variables
-    void print4debug(mat *B_p, mat *B_c,
-            bool R=false, bool E=false, bool C=false, bool A=false,
-            bool D=false, bool D_n=false, bool D_m=false,
-            bool U_p=false, bool U_c=false); // print function for debugging
-
-    // Default constructor
+    void prepare_for_integration(); // pre-compute some relevant objects
+    void cleanup_after_integration();
+    // (default) constructor
     CommunityDynamics() {}
-    // Deconstructor
+    // (default) deconstructor
     ~CommunityDynamics() {}
-    // Copy constructor
+    // copy constructor
     CommunityDynamics(const CommunityDynamics &C);
-    // Assignment operator
+    // assignment operator
     CommunityDynamics & operator=(const CommunityDynamics &C);
 };
 ```
 
-#### Methods:
-<a id='dynamics' />
-#### `virtual int dynamics(ODE_vector const & state, ODE_vector & time_derivative)`
-*the matrix operations required for numerically approximating metacommunity dynamics*
+## Methods:
+`virtual int dynamics(ODE_vector const & state, ODE_vector & time_derivative)` *the matrix operations required for numerically approximating metacommunity dynamics*
 
 1. Initialize matrices `B_p`, `B_c`, `dBdt_p` and `dBdt_c` which share memory with ODE_vectors `state` and `time_derivative` giving CVode machinery access to Armadillo matrix operations
 2. Initialize matices `prodGrowth`, `consGrowth`, `prodDisp`, `consDisp` used in **modular construction of model objects**
@@ -336,121 +329,143 @@ public:
 8. Construct dBdt_p = B_p . prodGrowth + prodDisp
 9. Construct dBdt_c = B_c . consGrowth + consDisp
 
-<a id='write_state_to' />
-#### `virtual void write_state_to(ODE_vector & state) const;`
-*pass data from Metacommunity to CVode objects*
+`virtual void write_state_to(ODE_vector & state) const;` *pass data from Metacommunity to CVode objects*
 
 1. Copy `bMat_p` into `ODE_vector state` elements 0 to S_p-1
 2. Copy `bMat_c` into `ODE_vector state` elements S_p to S_c-1
 
-<a id='read_state_from' />
-#### `virtual void read_state_from(const ODE_vector & state);`
-*pass data from CVode to Metacommunity objects*
+`virtual void read_state_from(const ODE_vector & state);` *pass data from CVode to Metacommunity objects*
 
 1. Copy elements 0 to S_p-1 of `ODE_vector state` into `bMat_p`.
 2. Copy elements S_p to S_c-1 of `ODE_vector state` into `bMat_c`
 
-<a id='number_of_variables' />
-#### `virtual int number_of_variables() const; // computes number of state variables`
-*compute the dimensionality of the model*
+`virtual int number_of_variables() const; // computes number of state variables` *compute the dimensionality of the model*
 
 1. Sums number of elements of `bMat_p` and `bMat_c` for intialization of `ODE_vector state`
 
 ***
 
-### Metacommunity
+# Metacommunity
 
 ```
 class Metacommunity: public Species {
 public:
-    // Members
-    Species sppPool; // biotic community
+    // members
+    Species sppPool; // biotic community sppP
 
-    // Assembly parameters
+    // assembly parameters
     int invMax; // total number invasions
     int iterS; // number Schwarz iterations
     int deltaT; // size of Schwarz timewindow
     int tMax; // relaxation time
-    mat invasionProb_p; // record fraction of successful invaders - producers
-    mat invasionProb_c; // record fraction of successful invaders - consumers
+    int S_p = 0; // record species richness for cleanup
+    int S_c = 0; // record species richness for cleanup
 
-    // Matrix objects - check each of these is required
+    // matrix objects - check each of these is required
     mat jacobian; // stores numerical approximation of Jacobian matrix
     mat cMat_reg; // stores effective interaction matrix computed numerically using harvesting experiment
+    mat invasionProb_p; // record fraction of successful invaders - producers --- obselete
+    mat invasionProb_c; // record fraction of successful invaders - consumers --- obselete
+    mat invasionProb;
 
-    // Data handling objects
-    string importFileName;
+    // data handling objects
+    string bMatFileName;
+    string jobID = "NA";
     double parOut;
     string experiment;
     int rep;
     string date;
     double simTime = 0;
+    int rank = 0;
+    string outputDirectory;
 
-    // Switches
+    // switches
     int storeTraj = 0; // 0, turn off; 1, record, don't concatenate; 2, concatenate trajectories for multiple invasions
+    bool compute_averages = false; // when true, unconditionally populate bavMat_p and bavMat_c after standard relaxation
 
-    // Methods
-    void metaCDynamics(int T, int subDom=-1); // ODE solver - NxS coupled ODEs - simulation metacommunity dynamics
-    void invaderTest(int subDom=-1); // tests invaders (species::invade()) for positive invasion growth rates
+    // methods
+    void metaCDynamics(int T, bool testing = false); // ODE solver - NxS coupled ODEs - simulation metacommunity dynamics
+    uvec invaderSample(int trophLev, int no_invaders); // introduce and test new species
+    mat invaderCleanup(int trophLev, uvec posGrowth); // remove unsuccessful invaders
+    void invaderPopulate(int trophLev, mat bInv_max); // reset biomasses of invaders
+    void envFluct(); // simulate dynamics in context of temporal abiotic turnover
+    void warming(double dTdt, int res, int time); // simulate dynamics in context of regional warming
+    void longDistDisp(int tMax, int edges); // randomly add fast, dispersal between (potentially) distant nodes
+    void consArea(int tMax, int percentLandscape, double phi, int rep, bool write_to_file = false); // model conservation areas using binary random field and simulate dynamics
+    void nodeRemoval(int tMax, int no_removals = 0); //
     void genJacobian(); // generates numerical approximation of Jacobian
-    void genCMatReg(double h=0.001); // simulates harvesting experiment
+    void genCMatReg(double h = 0.001); // simulates harvesting experiment
     void genSourceSink(int tFullRelax = 1000); // switch off dispersal to assign source-sink populations
-    void randomizeBMat(int rand = 1, int tFullRelax = 1000);
-    void performanceTest(bool init, int repPer, int S_p = 0, int S_c = 0); // generates a random metacommunity (without assembly) for peformance testing
+    void performanceTest(bool init, int repPer, int S_p = 0, int S_c = 0); // peformance testing of dynamics
+    void writePars(int repPer); // write parameters to file for performance testing
 
-    // Book keeping functions - store, output and import data
+    // book keeping functions - store, output and import data
     void printParams();
     void outputData();
+    void snapShot();
+    void cleanup();
     void importData(string bMat);
 
-    // Default constructor
+    // (default) constructor
     Metacommunity () {}
 
-    // Default deconstructor
+    // (default) deconstructor
     ~Metacommunity () {}
 
-    // Intialization constructor
+    // intialization constructor
     Metacommunity (
-        // Metacommunity parameters
-            bool m_init,        // 1
-            string m_bMat,      // 2
-            int m_invMax,       // 3
-            int m_iterS,        // 4
-            int m_deltaT,       // 5
-            int m_tMax,         // 6
-        // Species parameters
-            double s_c1,        // 7
-            double s_c2,        // 8
-            double s_emRate,    // 9
-            double s_dispL,     // 10
-            double s_pProducer, // 11
-            bool s_prodComp,    // 12
-            double s_alpha,     // 13
-            double s_sigma,     // 14
-            double s_rho,       // 15
-            bool s_discr_c_ij,  // 16
-        // Topograpy parameters
-            int t_no_nodes,     // 17
-            double t_phi,       // 18
-            int t_envVar,       // 19
-            int t_var_e,        // 20
-            bool t_randGraph,   // 21
-            bool t_gabriel,     // 22
-            int t_bisec,        // 23
-        // output variables
-            double m_parOut,    // 24
-            string m_experiment,// 25
-            int m_rep           // 26
+            // Metacommunity parameters
+            bool a_init,
+            string a_bMat,
+            string a_xMat,
+            string a_scMat,
+            int a_invMax,
+            int a_iterS,
+            int a_deltaT,
+            int a_tMax,
+            string a_outputDirectory,
+            // Species parameters
+            double a_c1,
+            double a_c2,
+            double a_c3,
+            double a_emRate,
+            double a_dispL,
+            double a_pProducer,
+            bool a_prodComp,
+            bool a_symComp,
+            double a_alpha,
+            double a_sigma,
+            double a_sigma_t,
+            double a_rho,
+            int a_comp_dist,
+            double a_omega,
+            double a_dispNorm,
+            // Topograpy parameters
+            int a_no_nodes,
+            double a_phi,
+            int a_envVar,
+            vec a_skVec,
+            double a_var_e,
+            bool a_randGraph,
+            bool a_gabriel,
+            int a_bisec,
+            double a_T_int,
+            // output variables
+            double a_parOut,
+            string a_experiment,
+            int a_rep,
+            string a_jobID
         )
     {
         // Parameterize
-        if (m_init) { // initialize new metacommunity model
-            iterS = m_iterS;
-            deltaT = m_deltaT;
-            tMax = m_tMax;
-            parOut = m_parOut;
-            experiment = m_experiment;
-            rep = m_rep;
+        if (a_init) { // initialize new metacommunity model
+            invMax = a_invMax;
+            iterS = a_iterS;
+            deltaT = a_deltaT;
+            tMax = a_tMax;
+            parOut = a_parOut;
+            experiment = a_experiment;
+            rep = a_rep;
             time_t t = time(0);
             struct tm * now = localtime( & t );
             ostringstream dateTemp;
@@ -458,36 +473,73 @@ public:
                      << (now->tm_mon + 1) << '-'
                      <<  now->tm_mday;
             date = dateTemp.str();
-            sppPool.c1 = s_c1;
-            sppPool.c2 = s_c2;
-            sppPool.emRate = s_emRate;
-            sppPool.dispL = s_dispL;
-            sppPool.pProducer = s_pProducer;
-            sppPool.alpha = s_alpha;
-            sppPool.sigma = s_sigma;
-            sppPool.rho = s_rho;
-            sppPool.discr_c_ij = s_discr_c_ij;
-            sppPool.landscape.no_nodes = t_no_nodes;
-            sppPool.landscape.phi = t_phi;
-            sppPool.landscape.envVar = t_envVar;
-            sppPool.landscape.var_e = t_var_e;
-            sppPool.landscape.randGraph = t_randGraph;
-            sppPool.landscape.gabriel = t_gabriel;
-            sppPool.landscape.bisec = t_bisec;
+            outputDirectory = a_outputDirectory;
+            jobID = a_jobID;
+            sppPool.c1 = a_c1;
+            sppPool.c2 = a_c2;
+            sppPool.c3 = a_c3;
+            sppPool.emRate = a_emRate;
+            sppPool.dispL = a_dispL;
+            sppPool.pProducer = a_pProducer;
+            sppPool.prodComp = a_prodComp;
+            sppPool.symComp = a_symComp;
+            sppPool.alpha = a_alpha;
+            sppPool.sigma = a_sigma;
+            sppPool.sigma_t = a_sigma_t;
+            sppPool.rho = a_rho;
+            sppPool.comp_dist = a_comp_dist;
+            sppPool.omega = a_omega;
+            sppPool.dispNorm = a_dispNorm;
+            sppPool.topo.xMatFileName = a_xMat;
+            sppPool.topo.scMatFileName = a_scMat;
+            sppPool.topo.no_nodes = a_no_nodes;
+            sppPool.topo.phi = a_phi;
+            sppPool.topo.envVar = a_envVar;
+            if (a_skVec(0) > 0) {
+                sppPool.topo.skVec = a_skVec;
+            }
+            sppPool.topo.var_e = a_var_e;
+            sppPool.topo.randGraph = a_randGraph;
+            sppPool.topo.gabriel = a_gabriel;
+            sppPool.topo.bisec = a_bisec;
+            sppPool.topo.T_int = a_T_int;
+            sppPool.topo.network.reset();
+            sppPool.topo.distMat.reset();
+            sppPool.topo.adjMat.reset();
+
 
         } else { // import metacommunity model
-            importData(m_bMat);
+            importData(a_bMat);
+            sppPool.topo.scMatFileName = a_scMat;
+            outputDirectory = a_outputDirectory;
+            if (a_invMax != 0) {
+                invMax += a_invMax;
+                cout << "\ninvMax updated to " << invMax << endl;
+            }
+            if (a_bisec != 0) {
+                sppPool.topo.bisec = a_bisec;
+                cout << "\nbisec updated to " << sppPool.topo.bisec << endl;
+            }
+            if (a_iterS != 0) {
+                iterS = a_iterS;
+                cout << "\niterS updated to " << iterS << endl;
+            }
+            if (a_deltaT != 0) {
+                deltaT = a_deltaT;
+                cout << "\ndeltaT updated to " << deltaT << endl;
+            }
+            if (a_tMax != tMax) {
+                tMax = a_tMax;
+                cout << "\ntMax updated to " << tMax << endl;
+            }
         }
-        invMax = m_invMax;
     }
 };
 ```
 
-#### Methods:
+## Methods:
 
-<a id='metacdynamics' />
-#### `void metaCDynamics(int T, int subDom=-1)`
-*This function initializes and runs the CVode machinery*
+`void metaCDynamics(int T, bool testing=false)` *This function initializes and runs the CVode machinery*
 
 There are three distinct simulation contexts that need to be managed by this function: A. whole domain scale (`subDom = -1`), B. non-parallel simulation/invader testing (`sppPool.landscape.network.n_rows == sppPool.landscape.no_nodes` and `subDom >= 0`), C. parallel simulation, subdomain scale, parallel simulation (`subDom >= 0`). The second of these requires subsetting the whole domain matrices accessible to the root process only, in order to test invaders at the subdomain scale. The third calls for both the whole/subdomain dispersal operator `Species::dMat_n` _and_ the inter-subdomain operator `Species::dMat_m`.
 
@@ -495,37 +547,19 @@ In all cases A. - C., the first step is to intialize a `CommunityDynamics dynami
 
 The simulation is then performed. `if (storeTraj == 0)` this is done behind the scenes. `if (storeTraj == 1)` after each timestep, the vectorized state matrices are stored as rows of the `sppPool.trajectories` obect. For large metacommunities, these objects can become extremely large, therefore should only be stored if required. Note, `storeTraj = 1` after assembly to study autonomously fluctuating population dynamics can be selected via command line arguments. `if (storeTraj == 2)` the algorithm with concatenate the trajectories of multiple invasion steps filling as yet uninvaded species trajectories with zero vectors.
 
-<a id='invadertest' />
-#### `void invaderTest(int subDom=-1)`
-*In order to avoid computationally costly whole domain simulation, this function will test potential invaders in a specific subdomain, but via the root process. The argument `subdom` is passed to the function [`metaCDynamics()`](#metacdynamics). `if (subDom == -1)` `metaCDynamics()` will simulate at the whole domain scale. `else` it will subset the model objects and simulate the non-parallel metacommunty dynamics _at the `subDom` subdomain scale_.*
+`void invaderSample(int trophLev, int no_invaders)` *sample new invader ecological coefficeints and test them*
 
-1. Calculate the number of invaders: `int no_invaders = (int) 0.05 * (sppPool.bMat_p.n_rows + sppPool.bMat_c.n_rows) + 1`.
-  - Number of invaders is increased in the early phase quantified by the local average invasion probability.
-2. Randomly allocate the trophic levels of invaders: `vec trophLev(no_invaders); trophLev.randu();`. Producer species are those for which `trophLev(i) <= sppPool.pProducer`; a competitive model is selected if `sppPool.pProducer == 1.0`. Declare variables `int no_prod, no_cons;` which count the number of producer/consumer species required in the present invasion event.
-`if (no_prod > 0)`
-3. Introduce `invExcess_p/c*no_prod` producer species to random local communities simultaneously (`invExcess_p/c` computed as inverse of local invasion probability), with `sppPool.invade(test = true)`, so that self-interaction and invader->resident competition are not incorporated.
-4. Simulate for `no_time_steps = 2` by calling [`metaCDynamics()`](#metacdynamics) and store biomass row vectors corresponding to invaders in `mat bInv`.
-5. Simulate for further `no_time_steps` and compare current state to that stored in `bInv`.
-6. Store the maximum local biomass of each invader species in `vec bInv_max` and compare to `min_b = 1e-7`. Invaders whose biomass increased by 1e-7 in at least one local community (hence `.max()`) are assigned to the `posGrowth` index vector, otherwise to `negGrowth`.
-7. Iterating in reverse order (`for (int i = negGrowth.n_rows - 1; i >= 0; i--)`) the matrix elements corresponding to indices stored in `negGrowth` are removed from relevant matrices.
-8. Steps 3. to 9. are then repeated `while (sppPool.bMat_p.n_rows - SRes_p < no_prod);` at which point the desired number of successful invaders has been introduced.
-9. In the case that the number of invaders exceeds `no_prod`, excess model elements are removed.
-10. The number of positively growing invader species _per attempted invasion_ is recorded in the vector `invasionProb_p`, along with the local invasion probability defined is the mean probability observed in the previous 10 invasion events.
-11. The missing elements of model matrices (e.g. `cMat`) are sampled from the same distribution used in the `Species::invade()` and the invader biomass vectors are set to zero in all nodes except that in which their biomass is maximized.
-  - Note the values of `min_b` and `no_time_steps` were tested to ensure the algorithm correctly infers successful invaders after the fewest possible matrix multiplications. Indirect interactions in metacommunities could lead to an initial, temporary growth phase, in particular in the case of consumer species which negatively impact the availability of their resources. As such, these values should be explored for each new parameterization to ensure the invader testing process is working correctly.
+`void invaderCleanup(int trophLev, uvec pos_growth)` *removes unsucessful invaders from all processes*
 
-`if (no_cons > 0)`
-3. -12. Apply the same algorithm to test invading consumer species.
+`void invaderPopulate(int trophLev, mat bInv_max)` *adds invaders at low biomass to their preferred site*
 
-<a id='genjacobian' />
-#### `void genJacobian()``
+`void genJacobian()``
 *Generate the numerical approximation of the Jacobian matrix*
 
 Initilize `CommunityDynamics dynamics` object and used inbuilt functionality to generate numerical approximation of the Jacobian, stored in `jacobian`
 
-<a id='gencmatreg' />
-#### `void genCMatReg(double h=0.001)`
-*This function computes the regional scale competive overlap matrix `cMat_reg`.*
+`void genCMatReg(double h=0.001)`
+*This function computes the regional scale competitive overlap matrix `cMat_reg`.*
 
 1. Generate and inverse the numerical approximation of the Jacobian using [`genJacobian()`](#genjacobian), and `arma::inv()`.
 2. Generate population indices: `uvec index = linspace<uvec>(0, sppPool.landscape.no_nodes-1, sppPool.landscape.no_nodes); index *= S_tot;`. These will be iteratively incremented for to index each species.
@@ -533,8 +567,7 @@ Initilize `CommunityDynamics dynamics` object and used inbuilt functionality to 
 4. compute the (vector) shift in biomass per unit harvesting as `dB_jx = -1 * (J_inv * H_i) / h;`. Convert to matrix form, row sum and store int the ith column of the matrix `cMat_reg`.
 5. Generate the normalization factors `mat norm, sng` and normalize to compute the regional scale _competitive overlap_ coefficents.
 
-<a id='gensourcesink' />
-####  `void genSourceSink(int tFullRelax = 1000)`
+`void genSourceSink(int tFullRelax = 1000)`
 *This function assigns populations as either source or sink*
 
 Dispersal is switched off and the metacommunity relaxed to new equilibrium in which all sink populations are absent. Discrete matrices `bMat_p/c_src` are then generated for which undetected populations are assigned 0, source poulaitons, 1, and sink populations -1.
@@ -547,40 +580,10 @@ Dispersal is switched off and the metacommunity relaxed to new equilibrium in wh
 6. Sink populations are allocated -1 by subtracting `Snk_p = Src_p - Snk_p`.
 7. The source sink matrix is generated by summing `sppPool.bMat_p_src = Src_p + Snk_p;`
 
-<p align="center">
-<img src="sourceSink.png" width=900px/>
 
-<a id='randomizebmat' />
-### `void randomizeBMat(int rand = 1, int tFullRelax = 1000)`
-
-*This function randomly shuffles the elements of the biomass matrices then allows the metacommunity to relax to (new) equilibrium.*
-
-1. Define the folder/filename for the output matrices. These are either generated from scratch in the normal way (see [`outputData()`](#outputdata)), or by altering the importFileName in the case that the metacommunity model was pre-assembled. In both cases, the name of the biomass matrix is used to generate a new folder within the associated SimulationData directory. Then each randomized/relaxed matrix will be saved under the same name "bMatR" with the integer `rand` appended to avoid over-writing.
-2. Biomass matrices are randomly shuffled using `arma::shuffle()`.
-3. Metacommunity is relaxed using [`metaCDynamics()`](#metacdynamics).
-4. Resultant matrix is stored.
-
-<a id='performancetest' />
-### `void performanceTest(bool init, int repPer, int S_p = 0, int S_c = 0)`
-*Generate a random metacommunity without assembly for testing parallelization*
-
-In order to explore the efficiency gain as a function of model parallization for different model assumptions, this function initializes a random metacommunity and then stores the wall time and the biomass matrices, *after* the parallel algorithm in main.cpp is run.
-
-`if (init)`:
-1. `S_p` producer species invaded *without* testing.
-2. `if (sppPool.pProducer < 1.0)` `0.5*S_p` consumer species are invaded
-3. The elements of the biomass matrices are then sampled from a lo-normal distribution which is normalized so that the largest local biomass is 1.0.
-
-`if (!init)`:
-1. Directory and filename of the biomass matrix is generated ("bMatP")
-2. Only `if (rand == 1)` biomass matrices are stored, under the assumption that the result of the simulation is identical between runs
-3. The complete parameter file is generated from which `bisec` and `simTime` can be used to test the performance gain due to parallelization
-
-<a id='printparams' />
 #### `void printParams()`
-*This prints model parameterization to console*
+*This prints model parameterisation to console*
 
-<a id='outputdata' />
 #### `void outputData()`
 *This function saves model objects*
 
@@ -589,21 +592,10 @@ In order to explore the efficiency gain as a function of model parallization for
 3. Generate filenames for each model objects. If model imported, filenames are generated from imported model location
 4. Store model objects.
 
-<a id='importdata' />
 #### `void importData(string bMat)`
 *This function loads model objects*
 
 1. Generate filenames of all model objects based on input biomass matrix filename.
 2. Load matrices and parameterize from parameter file.
-
-***
-
-### Parallel assembly algorith (main.cpp)
-
-
-
-***
-
-### Non-parallel assembly algorith (main.cpp)
 
 ***
