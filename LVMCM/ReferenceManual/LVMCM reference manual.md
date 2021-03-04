@@ -2,13 +2,13 @@
 ***
 
 # Table of contents
-1. [Topography](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#topography-)
-2. [Species](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species-)
-2. [CommunityDynamics](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#communitydynamics-)
-2. [Metacommunity](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species-)
+1. [Topography](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#topography)
+2. [Species](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species)
+2. [CommunityDynamics](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#communitydynamics)
+2. [Metacommunity](https://github.com/jacobosullivan/LVMCM_src/blob/master/LVMCM/ReferenceManual/LVMCM%20reference%20manual.md#species)
 
 ***
-# Topography <a name="topography"></a>
+# Topography
 
 ```
 class Topography {
