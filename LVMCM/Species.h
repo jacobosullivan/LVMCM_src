@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM) ////////////////////////
+/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (LVMCM) ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Jacob Dinner O'Sullivan -- j.l.dinner@qmul.ac.uk | j.osullivan@zoho.com ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7,11 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -25,7 +25,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//////////////////////////////////// PRE-RELEASE VERSION, PLEASE DO NOT DISTRIBUTE /////////////////////////////////////
+
 
 /*
  * This class contains the members and methods required for generating and storing the biotic component of the model,
@@ -49,7 +49,7 @@ public:
     // parameters
     double c1; // interspecific competition parameter 1 - (disc: c_ij; cont: alpha)
     double c2; // interspecific competition parameter 2 - (disc: P(c_ij); cont: beta)
-    double c3; // interspecific competition parameter 3 - connectance for continuously distributed A_ij
+    double c3 = -1; // interspecific competition parameter 3 - connectance for continuously distributed A_ij
     double rho; // consumer mortality
     double sigma; // standard deviation log-normal attack rate distribution
     double alpha; // base attack rate
@@ -59,8 +59,12 @@ public:
     double thresh = 1e-4; // detection/extinction threshold
     double sigma_t = 0.05; // standard deviation of Ohrstein-Uhlenbeck process
     double omega = 0.5; // parameter controlling the width of the temperature niche
-    double delta_g = 2.0; // (0.5x) proprtional difference between range in environmental and environmental optima
+    double delta_g = 1.25; // proprtional difference between range in environment and fundamental distribution of environmental optima
     double sigma_r = 0.25; // standard deviation of white noise added to quadratic environmental response function
+    double bodymass = 1e-4; // body mass
+    double bodymass_inv = pow(bodymass, -1); // inverse body mass
+    double mu = 1e-1; // mortality
+
     // switches
     bool prodComp = true; // select producer competition on/off
     int comp_dist = 0; // select competition distribution: 0 - discrete, 1 - pure beta, 2 - discretized beta
@@ -68,21 +72,22 @@ public:
     int dispNorm = 0; // effort (0), degree normalized (1) or passive dispersal (2)
 
     // matrix objects
-    mat bMat_p; // PxN biomass matrix - producers
-    mat bavMat_p; // PxN biomass average matrix - producers
-    mat bMat_p_src; // PxN biomass matrix - producers, source only
+    mat xMat; // SxN biomass matrix
+    mat xMat_t0; // SxN biomass matrix - needed to check for change of sign
+    uvec indices_DP; // 1D indices of (i,x) \in {D,P}
+    uvec indices_S; // 1D indices of (i,x) \in {S}
+    mat xMat_src; // SxN biomass matrix - producers, source only
     mat rMat; // PxN r matrix - producers
     mat sMat; // PxN r matrix ignoring temperature dependence - producers
     mat cMat; // PxP competitive overlap matrix - producers
-    mat uMat_p; // fixed unknowns - producers
     mat tMat; // environmental tolerances for explicit aboitic modelling
-    mat dMat_n; // (sub)domain dispersal matrix
-    mat dMat_m; // inter-subdomain dispersal matrix
-    mat emMat_p; // species specific emigration rates - producers
+    mat dMat; // dispersal matrix
+    mat emMat; // species specific emigration rates - producers
     mat ouMat; // Ohrstein-Uhlenback process
     mat efMat; // environmental fluctuations centred on 0 for perturbing R
     vec bias; // species specific bias of environmental fluctuation
     mat gMat; // Sxl matrix of species environmental optima
+    mat sgnMat; // SxN matrix of signs of spp growth rates
 
     // storage objects
     mat trajectories; // matrix that will store the trajectories for analysis
@@ -109,7 +114,6 @@ public:
     mat genRVecERF(); // generate random specific environmental tolerance vector (outcome of implicit Environmental Response Function) and use to generate r_i
     void invade(int trophLev, bool test = true); // add new producer (trophLev=0) or cosumer (1) to specified 'port' patch
     field<uvec> extinct(int wholeDom=1, uvec ind_p = {}, uvec ind_c = {}); // remove extinct species, wholeDom flag to indicate if species testing required (whole domain only)
-    void subSet(int domain); // subset whole domain objects into designated subdomain objects
 
     // (default) constructor
     Species () {}

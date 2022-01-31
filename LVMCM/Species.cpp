@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM) ////////////////////////
+/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (LVMCM) ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Jacob Dinner O'Sullivan -- j.l.dinner@qmul.ac.uk | j.osullivan@zoho.com ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7,11 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -25,7 +25,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//////////////////////////////////// PRE-RELEASE VERSION, PLEASE DO NOT DISTRIBUTE /////////////////////////////////////
+
 
 /*
  * This class contains the members and methods required for generating and storing the biotic component of the model,
@@ -92,10 +92,6 @@ mat Species::genRVec(rowvec zVecExt) {
 
     vec r_i;
     r_i = mu + (topo.sigEVec * topo.sigEVal) * zVec; // sample from random field
-
-    if (topo.network.n_rows != topo.no_nodes) { // subset by subdomain
-        r_i = r_i.rows(topo.subdom_nodes);
-    }
 
     return(r_i.t()); // return row vector of intrisic growth rates
 }
@@ -280,10 +276,15 @@ mat Species::genRVecQuad() {
 /////////////////////////////////////// Sample specific environmental optima ///////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    rowvec g_ik;
-    g_ik.randu(topo.envVar); // gen l random uniform variables
-    g_ik *= (2*delta_g); // scale range of g_ik
-    g_ik -= delta_g; // translate range of g_ik
+    rowvec g_ik(topo.envVar);
+    for (int k=0; k<topo.envVar; k++) {
+        vec g_i;
+        g_i.randu(1); // gen random uniform variable
+        g_i *= topo.rangeEnv(k); // rescale g_i
+        g_i += topo.minEnv(k); // translate g_i
+        g_i *= delta_g; // allow sampling from delta_g*range of environmental variable
+        g_ik(k) = g_i(0);
+    }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////// Generate growth rate vector ///////////////////////////////////////////////
@@ -306,7 +307,6 @@ mat Species::genRVecQuad() {
     } else {
         tMat = join_vert(tMat, g_ik);
     }
-
     return (r_i);
 }
 
@@ -361,8 +361,8 @@ void Species::ouProcess() {
         // genRVec()
 
     if (ouMat.n_rows == 0) { // initialize matrices
-        ouMat.zeros(bMat_p.n_rows, bMat_p.n_cols);
-        efMat.zeros(bMat_p.n_rows, bMat_p.n_cols);
+        ouMat.zeros(xMat.n_rows, xMat.n_cols);
+        efMat.zeros(xMat.n_rows, xMat.n_cols);
     }
 
     mat Zmat;
@@ -437,22 +437,22 @@ void Species::invade(int trophLev, bool invTest) {
         // comp_dist - select discrete (0), pure beta (1), or discretized beta (2) sampling for A_ij
 
     // output:
-        // updates to matrices bMat_p, rMat, cMat, bMat_c, aMat
+        // updates to matrices xMat, rMat, cMat, bMat_c, aMat
 
     double inv = 1e-6; // invasion biomass
 
     if (trophLev == 0) { // generate producer
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////// Add row to bMat_p ////////////////////////////////////////////////////
+///////////////////////////////////////////////// Add row to xMat ////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        if (bMat_p.n_rows == 0) { // replace with insert rows need to set n cols at initialization
-            bMat_p.set_size(1, topo.network.n_rows);
-            bMat_p.fill(inv);
+        if (xMat.n_rows == 0) { // replace with insert rows need to set n cols at initialization
+            xMat.set_size(1, topo.network.n_rows);
+            xMat.zeros();
         } else {
-            bMat_p.insert_rows(S_p+I_p,1);
-            bMat_p.row(S_p+I_p).fill(inv);
+            xMat.insert_rows(S_p+I_p,1);
+            xMat.row(S_p+I_p).zeros();
         }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -465,12 +465,12 @@ void Species::invade(int trophLev, bool invTest) {
             } else {
                 rMat = join_vert(rMat, genRVec());
             }
-        } else if (topo.T_int != -1.0) {
-            if (rMat.n_rows == 0) {
-                rMat = genRVecTemp();
-            } else {
-                rMat = join_vert(rMat, genRVecTemp());
-            }
+//        } else if (topo.T_int != -1.0) {
+//            if (rMat.n_rows == 0) {
+//                rMat = genRVecTemp();
+//            } else {
+//                rMat = join_vert(rMat, genRVecTemp());
+//            }
         } else { // explicitly modelled environment
             if (topo.skVec(0) > 0.0) {
                 if (rMat.n_rows == 0) {
@@ -502,11 +502,11 @@ void Species::invade(int trophLev, bool invTest) {
         if (emRate < 0) { // sample emigration rate for uniform distribution
             vec emRate_i(1);
             emRate_i.randu();
-            if (emMat_p.n_rows == 0) {
-                emMat_p = emRate_i;
+            if (emMat.n_rows == 0) {
+                emMat = emRate_i;
             } else {
-                emMat_p.insert_rows(S_p+I_p,1);
-                emMat_p.row(S_p+I_p-1) = emRate_i;
+                emMat.insert_rows(S_p+I_p,1);
+                emMat.row(S_p+I_p-1) = emRate_i;
             }
         }
 
@@ -624,11 +624,11 @@ void Species::invade(int trophLev, bool invTest) {
     } else if (trophLev == 1) { // generate consumer
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////// Add row to bMat_p /////////////////////////////////////////////////
+//////////////////////////////////////////////////// Add row to xMat /////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        bMat_p.insert_rows(bMat_p.n_rows,1);
-        bMat_p.row(bMat_p.n_rows-1).fill(inv);
+        xMat.insert_rows(xMat.n_rows,1);
+        xMat.row(xMat.n_rows-1).zeros();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////// Add row/col to cMat //////////////////////////////////////////////////
@@ -651,11 +651,11 @@ void Species::invade(int trophLev, bool invTest) {
         if (emRate < 0) { // sample emigration rate for uniform distribution
             vec emRate_i(1);
             emRate_i.randu();
-            if (emMat_p.n_rows == 0) {
-                emMat_p = emRate_i;
+            if (emMat.n_rows == 0) {
+                emMat = emRate_i;
             } else {
-                emMat_p.insert_rows(bMat_p.n_rows-1,1);
-                emMat_p.row(emMat_p.n_rows-1) = emRate_i;
+                emMat.insert_rows(xMat.n_rows-1,1);
+                emMat.row(emMat.n_rows-1) = emRate_i;
             }
         }
         I_c++;
@@ -677,12 +677,12 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
 
     // output:
         // (root) 2D field of producer/consumer extiction indices
-        // updates to matrices bMat_p, rMat, cMat, bMat_c, aMat
+        // updates to matrices xMat, rMat, cMat, bMat_c, aMat
 
     field<uvec> indReturn(2); // return object - 2D uvec of prod/cons extinction indices
     int countS=0;
     uvec ind_ext; // temporary extinction index
-    int S_tot = bMat_p.n_rows; // total species richness
+    int S_tot = xMat.n_rows; // total species richness
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////// Check for extinct producers ///////////////////////////////////////////////
@@ -691,7 +691,7 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
     if (wholeDom) { // check for extinct species at regional scale
         ind_p.set_size(S_p);
         for (int i=0; i<S_p; i++) {
-            ind_ext = find(bMat_p.row(i) > thresh); // search for present populations
+            ind_ext = find(xMat.row(i) > thresh); // search for present populations
             if (ind_ext.n_rows == 0) {
                 ind_p(countS) = i; // if no populations present, add index to ind_p
                 countS++;
@@ -705,11 +705,12 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
 /////////////////////////////////////////// Shed rows/cols model objects ///////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    int S_before = S_p;
+
     for (int i = ind_p.n_rows - 1; i >= 0; i--) {
-        bMat_p.shed_row(ind_p(i));
-        if (uMat_p.n_rows > 0) {
-            uMat_p.shed_row(ind_p(i));
-        }
+
+        uvec extinct_indices = ind_p(i) + linspace<uvec>(0, S_before*topo.no_nodes - S_before, topo.no_nodes);
+        xMat.shed_row(ind_p(i));
         rMat.shed_row(ind_p(i));
         if (sMat.n_rows > 0) {
             sMat.shed_row(ind_p(i));
@@ -719,9 +720,36 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
         if (tMat.n_rows != 0) {
             tMat.shed_row(ind_p(i));
         }
-        if (emMat_p.n_rows != 0) {
-            emMat_p.shed_row(ind_p(i));
+        if (emMat.n_rows != 0) {
+            emMat.shed_row(ind_p(i));
         }
+
+        // for convenience update indices in loop, however in case many species lost at once, this could be inefficient
+        uvec extinct_indices_copy, indicesX_extinct_copy; // these required by arma function intersect, otherwise useless
+        uvec indicesX_extinct; // indices of indices_DP to be removed
+        intersect(extinct_indices_copy, indicesX_extinct, indicesX_extinct_copy, indices_DP, extinct_indices);
+        indices_DP.shed_rows(indicesX_extinct); // remove indices of DP species that are extinct
+
+        intersect(extinct_indices_copy, indicesX_extinct, indicesX_extinct_copy, indices_S, extinct_indices);
+        indices_S.shed_rows(indicesX_extinct); // remove indices of S species that are extinct
+
+        if (extinct_indices(extinct_indices.n_rows - 1) != S_before*topo.no_nodes) {
+            extinct_indices.resize(extinct_indices.n_rows+1);
+            extinct_indices(extinct_indices.n_rows-1) = S_before*topo.no_nodes;
+        }
+
+        uvec find_less_than_j;
+        for (int j=0; j<topo.no_nodes; j++) {
+            find_less_than_j = find(indices_DP > extinct_indices(j) && indices_DP < extinct_indices(j+1));
+            if (find_less_than_j.n_rows > 0) {
+                indices_DP.elem(find_less_than_j) -= j+1;
+            }
+            find_less_than_j = find(indices_S > extinct_indices(j) && indices_S < extinct_indices(j+1));
+            if (find_less_than_j.n_rows > 0) {
+                indices_S.elem(find_less_than_j) -= j+1;
+            }
+        }
+        S_before--;
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -731,8 +759,8 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
     if (wholeDom) { // as above for consumer species
         ind_c.set_size(S_c);
         countS=0;
-        for (int i=rMat.n_rows; i<bMat_p.n_rows; i++) {
-            ind_ext = find(bMat_p.row(i) > thresh);
+        for (int i=rMat.n_rows; i<xMat.n_rows; i++) {
+            ind_ext = find(xMat.row(i) > thresh);
             if (ind_ext.n_rows == 0) {
                 ind_c(countS) = i;
                 countS++;
@@ -747,14 +775,11 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     for (int i = ind_c.n_rows - 1; i >= 0; i--) {
-        bMat_p.shed_row(ind_c(i));
-        if (uMat_p.n_rows > 0) {
-            uMat_p.shed_row(ind_c(i));
-        }
+        xMat.shed_row(ind_c(i));
         cMat.shed_row(ind_c(i));
         cMat.shed_col(ind_c(i));
-        if (emMat_p.n_rows != 0) {
-            emMat_p.shed_row(ind_p(i));
+        if (emMat.n_rows != 0) {
+            emMat.shed_row(ind_p(i));
         }
     }
 
@@ -765,11 +790,11 @@ field<uvec> Species::extinct(int wholeDom, uvec ind_p, uvec ind_c) {
     if (sppRichness.n_rows == 0) {
         sppRichness.set_size(1,2);
         sppRichness(sppRichness.n_rows-1,0) = rMat.n_rows;
-        sppRichness(sppRichness.n_rows-1,1) = bMat_p.n_rows - rMat.n_rows;
+        sppRichness(sppRichness.n_rows-1,1) = xMat.n_rows - rMat.n_rows;
     } else { // resize sppRichness vector(s) after each invasion
         sppRichness.resize(sppRichness.n_rows+1,2);
         sppRichness(sppRichness.n_rows-1,0) = rMat.n_rows;
-        sppRichness(sppRichness.n_rows-1,1) = bMat_p.n_rows - rMat.n_rows;
+        sppRichness(sppRichness.n_rows-1,1) = xMat.n_rows - rMat.n_rows;
     }
 
     return(indReturn);
@@ -794,19 +819,11 @@ void Species::genDispMat() {
         // genAdjMat()
 
     // output:
-        // dMat_n - regional dispersal operator
-
-    if (dispNorm == 0) {
-        cout  << "(effort normalized dispersal model)..." << endl;
-    } else if (dispNorm == 1) {
-        cout  << "(degree normalized dispersal model)..." << endl;
-    } else if (dispNorm == 2) {
-        cout  << "(passive dispersal model)..." << endl;
-    }
+        // dMat - regional dispersal operator
 
     if (topo.no_nodes == 1) {
-        dMat_n.set_size(1,1);
-        dMat_n.zeros();
+        dMat.set_size(1,1);
+        dMat.zeros();
     } else {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -816,11 +833,11 @@ void Species::genDispMat() {
         if (topo.distMat.n_rows == 0) {
             topo.genDistMat();
         }
-        dMat_n = exp(-topo.distMat / dispL);
+        dMat = exp(-topo.distMat / dispL);
         if (topo.adjMat.n_rows == 0) {
             topo.genAdjMat();
         }
-        dMat_n %= topo.adjMat;
+        dMat %= topo.adjMat;
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -845,7 +862,7 @@ void Species::genDispMat() {
             if (abs(topo.adjMat(i,j)) == 1) {
                 if (dispNorm == 0) {
                     // 'effort' normalized dispersal matrix
-                    kMat(i,j) = emRate / sum(dMat_n.col(i));
+                    kMat(i,j) = emRate / sum(dMat.col(i));
                 } else if (dispNorm == 1) {
                     // degree normalized dispersal matrix
                     kMat(i,j) = emRate / kVec.n_rows;
@@ -860,96 +877,10 @@ void Species::genDispMat() {
     if (emRate < 0) { // for non-uniform emRate, set to -1.0, emRate included in dynamics
         kMat = abs(kMat);
     }
-    dMat_n(find(topo.adjMat == -1)).fill(1); // required for element-wise multiplication
-    dMat_n = kMat % dMat_n; // new edges, if any, assigned e/k (distance independent)
+    dMat(find(topo.adjMat == -1)).fill(1); // required for element-wise multiplication
+    dMat = kMat % dMat; // new edges, if any, assigned e/k (distance independent)
     bool minus_e = false; // include -e term from diagonal of D
     if (minus_e) {
-        dMat_n.diag().fill(-1*abs(emRate)); // the dispersal operator includes the (negative) emigration terms on the diagonal
+        dMat.diag().fill(-1*abs(emRate)); // the dispersal operator includes the (negative) emigration terms on the diagonal
     }
-}
-
-void Species::subSet(int domain) {
-
-    // summary:
-        // subset model by domain decomposition using restriction operators and column indices
-        // generate the matrix of fixed unknowns representingan approximation of the subdomain interface
-
-    // arguments:
-        // domain - index of subdomain, i.e. rank of parallel process, from which function called
-
-    // required members:
-        // topo.fVec - indicator vector, elements of which denote subdomain allocation of nodes
-
-    // output:
-        // updates to matrices bMat_p, rMat, bMat_c, uMat_p, uMat_c, dMat_n, dMat_m
-        // define topo.intIF and topo.adjIF which record the interface nodes
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////// Infer and store intra- and inter- subdomain edges /////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    uvec index; // storage indices of specified subdomain
-    index = find(topo.fVec == domain);
-
-    std::vector<long long unsigned int> internal, adjacent; // storage objects for internal and adjacent edges - push_back functionality
-    for (auto it=index.begin(); it!=index.end(); it++) {
-        for (int j=0; j<topo.no_nodes; j++) {
-            if (topo.adjMat(*it, j) == 1) {
-                uvec in = find(index == j);
-                if (in.is_empty()) {
-                    internal.push_back(*it);
-                    adjacent.push_back(j);
-                }
-            }
-        }
-    }
-
-    uvec iIF(&internal[0], internal.size()); // convert to armadillo objects
-    uvec aIF(&adjacent[0], internal.size());
-    topo.intIF = unique(iIF); // dereplicate
-    topo.adjIF = unique(aIF);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////// Extract row/cols corresponding to specified subdomain /////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    topo.network = topo.network.rows(index);
-    if (topo.envMat.n_rows != 0) {
-        topo.envMat = topo.envMat.cols(index);
-    }
-    if (bMat_p.n_rows != 0) { // imported objects
-        uMat_p = bMat_p.cols(topo.adjIF);
-        bMat_p = bMat_p.cols(index);
-        rMat = rMat.cols(index);
-    }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////// Generate restriction operators for decomposing dispersal operator /////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    umat P_n(index.n_rows, topo.no_nodes), P_m(topo.adjIF.n_rows, topo.no_nodes); // restriction operators
-    P_n.zeros();
-    P_m.zeros();
-
-    for (int i=0; i<index.n_rows; i++) {
-        P_n(i,index(i)) = 1;
-    }
-
-    for (int i=0; i<topo.adjIF.n_rows; i++) {
-        P_m(i,topo.adjIF(i)) = 1;
-    }
-
-    dMat_m = P_m * dMat_n * P_n.t(); // inter-subdomain dispersal operator
-    dMat_n = P_n * dMat_n * P_n.t(); // intra-subdomain dispersal operator
-
-    if (uMat_p.n_rows > 0) {
-        uMat_p = uMat_p * dMat_m;
-    }
-
-    if (topo.distMat.n_rows != 0) {
-        topo.distMat = topo.distMat.submat(index,index);
-    }
-
-    topo.subdomain = domain;
-    topo.subdom_nodes = index;
 }

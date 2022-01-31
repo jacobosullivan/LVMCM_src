@@ -10,18 +10,21 @@
 #ifdef DEBUGGING
 #ifndef __gnu_linux__  
 #define FATAL_ERROR(MSG) do{					\
+  std::cout << std::endl ; \
   std::cout << __FILE__ << ':' << __LINE__ << ':' << MSG << std::endl;	\
   std::cout << "aborting." << std::endl ; \
   abort(); \
 }while(0)
 #elif defined(SX)
 #define FATAL_ERROR(MSG) do{					\
+  std::cout << std::endl ; \
   std::cout << __FILE__ << ':' << __LINE__ << ':' << MSG << std::endl;	\
   std::cout << "exiting." << std::endl; \
   exit(1); \
 }while(0)
 #else
 #define FATAL_ERROR(MSG) do{					\
+  std::cout << std::endl ; \
   std::cout << __FILE__ << ':' << __LINE__ << ':' << MSG << std::endl;	\
   std::cout << "provoking a ... " ; \
   std::cout << *(((int *) 0) +3) + 4;\
@@ -30,12 +33,14 @@
 #else
 #ifdef __gnu_linux__
 #define FATAL_ERROR(MSG) do{					\
+  std::cout << std::endl ; \
   std::cout << __FILE__ << ':' << __LINE__ << ':' << MSG << std::endl;	\
   std::cout << "provoking a ... " ; \
   std::cout << *(((int *) 0) +3) + 4;\
 }while(0)
 #else
 #define FATAL_ERROR(MSG) do{					\
+  std::cout << std::endl ; \
   std::cout << __FILE__ << ':' << __LINE__ << ':' << MSG << std::endl;	\
   exit(1);                                                      \
 }while(0)
@@ -67,7 +72,7 @@
 #endif
 
 #define WARN_IF(X,Y)						\
-do{if((X)) std::cout << __FILE__ << ':' << __LINE__		\
+do{if((X)) std::cout << std::endl << __FILE__ << ':' << __LINE__\
 		     << ": WARNING: " << (#X) << std::endl	\
 		     << "************* " << Y << std::endl;	\
  }while(0)
@@ -76,7 +81,7 @@ do{if((X)) std::cout << __FILE__ << ':' << __LINE__		\
 
 #define SYSCALL(X) do{int _MYERROR_;if((_MYERROR_=(X))) FATAL_ERROR("Syscall" << std::endl << "   "<< #X << std::endl << "failed with return value " << _MYERROR_ );}while(0)
 
-#define REPORT(X) std::cout << #X << " = " << (X) << std::endl
+#define REPORT(X) std::cout << std::endl << #X << " = " << (X) << std::endl
 
 #define REPORT_ONCE(X) do{static bool REPORTED=false; if(!REPORTED){REPORTED=true; std::cout << #X << " = " << (X) << std::endl;}}while(0);
 
@@ -124,3 +129,4 @@ bool test_my_isinf(double f);///< evaluates my_isinf at run time
 int cache_mark(char * begin,char * end);/// try to prevent cache losses
 
 #endif // __ERROR_H__
+

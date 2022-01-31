@@ -1,9 +1,9 @@
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -17,7 +17,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//////////////////////////////////// PRE-RELEASE VERSION, PLEASE DO NOT DISTRIBUTE /////////////////////////////////////
+
 
 #ifndef SETC_LVMCM_RNG_H
 #define SETC_LVMCM_RNG_H

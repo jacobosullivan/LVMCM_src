@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM) ////////////////////////
+/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (LVMCM) ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Jacob Dinner O'Sullivan -- j.l.dinner@qmul.ac.uk | j.osullivan@zoho.com ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7,11 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -25,7 +25,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//////////////////////////////////// PRE-RELEASE VERSION, PLEASE DO NOT DISTRIBUTE /////////////////////////////////////
+
 
 /*
  * This class contains the members and methods required for generating and storing the abiotic component of the model
@@ -68,14 +68,15 @@ void Topography::genNetwork() {
                 vec ycoord = sqrt(no_nodes) * randu(no_nodes);
                 network = join_horiz(xcoord, ycoord);
             } else { // generate regular lattice
-                vec xcoord;
-                xcoord = linspace(0, sqrt(no_nodes) - 1, sqrt(no_nodes));
+                no_nodes = lattice_height*lattice_width;
+                vec xcoord = linspace(0, lattice_width - 1, lattice_width);
+                vec ycoord = linspace(0, lattice_height - 1, lattice_height);
                 network.set_size(no_nodes, 2);
                 int i, j, k = 0;
-                for (i = 0; i < xcoord.n_rows; i++) { // grid expand algorithm
-                    for (j = 0; j < xcoord.n_rows; j++) {
+                for (j = 0; j < ycoord.n_rows; j++) { // grid expand algorithm
+                    for (i = 0; i < xcoord.n_rows; i++) {
                         network(k, 0) = xcoord(i);
-                        network(k, 1) = xcoord(j);
+                        network(k, 1) = ycoord(j);
                         k++;
                     }
                 }
@@ -84,49 +85,12 @@ void Topography::genNetwork() {
             if (adjMat.n_rows == 0) {
                 genAdjMat(); // generate adjacency matrix
             }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////// List nodes in order of vector norm  ///////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-            vec norm(no_nodes); // generate vector of vector norms of nodes for network ordering
-            for (int i = 0; i < no_nodes; i++) {
-                norm(i) = sqrt(pow(network(i, 0) + network(i, 1), 2));
-            }
-            network = join_horiz(network, norm);
-
-            int end = no_nodes - 1;
-            rowvec swap;
-            colvec swap_col;
-//        for (int j = end - 1; j > 0; j--) { // vector ordering algorithm
-//            for (int i = 0; i < end; i++) {
-//                if (network(i, 2) > network(i + 1, 2)) {
-//                     reorder network
-//                    swap = network.row(i + 1);
-//                    network.row(i + 1) = network.row(i);
-//                    network.row(i) = swap;
-
-            // reorder adjacency - THIS NEEDS TO BE DEBUGGED
-//                    swap = adjMat.row(i + 1);
-//                    swap_col = adjMat.col(i + 1);
-//                    adjMat.row(i + 1) = adjMat.row(i);
-//                    adjMat.col(i + 1) = adjMat.col(i);
-//                    adjMat.row(i) = swap;
-//                    adjMat.col(i) = swap_col;
-//                }
-//            }
-//            end--;
-//        }
-            network.shed_col(2);
-
             if (distMat.n_rows == 0) {
                 genDistMat(); // generate distance matrix
             }
             if (adjMat.n_rows == 0) {
                 genAdjMat(); // generate adjacency matrix
             }
-
-            fVec.zeros(no_nodes); // initialize indicator vector
         }
     } else { // import network
         cout << "\nImporting network " << xMatFileName << endl;
@@ -221,26 +185,40 @@ void Topography::genAdjMat() {
             }
         } else { // lattice
 
-            unsigned int no_nodes_sqrt = sqrt(no_nodes);
-
-            for (int k=1; k<=no_nodes; k++) {
-                int up = k - no_nodes_sqrt;
-                int down = k + no_nodes_sqrt;
-                int left = k - 1;
-                int right = k + 1;
-                if (up > 0) {
-                    adjMat(k-1, up-1) = 1.0;
-                }
-                if (down <= no_nodes_sqrt) {
-                    adjMat(k-1, down-1) = 1.0;
-                }
-                if (left % no_nodes_sqrt != 0) {
-                    adjMat(k-1, left-1) = 1.0;
-                }
-                if (k % no_nodes_sqrt != 0) {
-                    adjMat(k-1, right-1) = 1.0;
+//            unsigned int no_nodes_sqrt = sqrt(no_nodes);
+            adjMat.set_size(no_nodes, no_nodes);
+            for (int y=0; y<lattice_height; y++) {
+                for (int x=0; x<lattice_width; x++) {
+                    int i = y*lattice_width + x;
+                    if (x > 0) {
+                        adjMat(i-1,i) = 1;
+                        adjMat(i,i-1) = 1;
+                    }
+                    if (y > 0) {
+                        adjMat(i-lattice_width,i) = 1;
+                        adjMat(i,i-lattice_width) = 1;
+                    }
                 }
             }
+
+//            for (int k=1; k<=no_nodes; k++) {
+//                int up = k - no_nodes_sqrt;
+//                int down = k + no_nodes_sqrt;
+//                int left = k - 1;
+//                int right = k + 1;
+//                if (up > 0) {
+//                    adjMat(k-1, up-1) = 1.0;
+//                }
+//                if (down <= no_nodes_sqrt) {
+//                    adjMat(k-1, down-1) = 1.0;
+//                }
+//                if (left % no_nodes_sqrt != 0) {
+//                    adjMat(k-1, left-1) = 1.0;
+//                }
+//                if (k % no_nodes_sqrt != 0) {
+//                    adjMat(k-1, right-1) = 1.0;
+//                }
+//            }
 
         }
 
@@ -271,18 +249,31 @@ void Topography::genEnvironment() {
     // output:
         // envMat - matrix of environmental distribution vectors, dimensions (envVar x no_nodes)
 
+    if (envMatFileName.length() != 0) {
+        cout << "\nImporting environment matrix " << envMatFileName << endl;
+        envMat.load(envMatFileName);
+    } else {
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////// Sample from envVar random fields /////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    vec zVec, eRow;
-    envMat.set_size(envVar, no_nodes); // initialize enviroment object
-    for (int i=0; i<envVar; i++) {
-        zVec.randn(no_nodes); // random uniform variables
-        eRow = (sigEVec * sigEVal) * zVec; // sample from random field
-//        eRow -= eRow.min(); // translate e_min to 0
-//        eRow /= eRow.max(); // rescale to range [0,1]
-        envMat.row(i) = eRow.t(); // store in environment object
+        vec zVec, eRow;
+        envMat.set_size(envVar, no_nodes); // initialize enviroment object
+        for (int i = 0; i < envVar; i++) {
+            zVec.randn(no_nodes); // standard normal variables
+            eRow = (sigEVec * sigEVal) * zVec; // sample from random field
+            eRow = eRow - mean(eRow); // make standard normal
+            eRow = eRow/stddev(eRow);
+            envMat.row(i) = eRow.t(); // store in environment object
+        }
+    }
+    rangeEnv.set_size(envVar);
+    minEnv.set_size(envVar);
+
+    for (int i = 0; i < envVar; i++) {
+        rangeEnv(i) = envMat.row(i).max() - envMat.row(i).min();
+        minEnv(i) = envMat.row(i).min();
     }
 }
 
@@ -295,7 +286,7 @@ void Topography::genTempGrad() {
     envMat = T_x; // define linear temperature gradient in single dimension
 }
 
-void Topography::genDomainDecomp(mat netImprtd) {
+void Topography::genLandscape(mat netImprtd) {
 
     // summary:
         // generate a spatial network and domain decompose via recursive spectral bisection (https://en.wikipedia.org/wiki/Graph_partition)
@@ -305,13 +296,12 @@ void Topography::genDomainDecomp(mat netImprtd) {
         // netImprtd - imported network for simulation extension
 
     // required members:
-        // bisec - number of recursive bisections
         // network - cartesian coordinates of spatial network
         // distMat - euclidean distance matrix
         // adjMat - unweighted graph adjacency matrix
 
     // output:
-        // fVec - indicator vector, elements of which denote subdomain allocation of nodes
+        // abiotic landscape objects
 
     // external function calls:
         // genNetwork()
@@ -319,167 +309,21 @@ void Topography::genDomainDecomp(mat netImprtd) {
         // genAdjMat()
         // genEnvironment()
 
-    if (bisec > 0) {
-        int no_sub = pow(2, bisec); // final number of sumdomains
-        printf("\nClustering %d nodes into %d subdomains of %d\n", no_nodes, no_sub, (int) no_nodes / no_sub);
-        uvec f_temp, fUnq; // indicator vectors of subdomains
-        bool stop; // flag for restarting do loop if any subdomain is not connected
-        int unb = 0, unc = 0, attempt = 0; // counters for recording number of times do loop repeated due to unbalanced/unconnected subdomains
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////// Spectral bisection algorithm ///////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-        do {
-            stop = false;
-            attempt++;
-            fVec.reset();
-            if (netImprtd.n_rows == 0) {
-                network.reset();
-                distMat.reset();
-                adjMat.reset();
-                printf("\rGenerating cartesian coordinates and distance matrix, attempt %d ... ", attempt);
-                genNetwork();
-                if (envVar != 0) { // generate enviroment
-                    genEnvironment();
-                }
-                if (T_int != -1.0) {
-                    genTempGrad();
-                }
-            } else {
-                if (attempt == 1) {
-                    cout << "\nDecomposing imported network... ";
-                    genDistMat();
-                    genAdjMat();
-                } else {
-                    cout << "\nDecomposition of imported network failed, check bisec parameter" << endl;
-                    stop = true;
-                    return;
-                }
-            }
-
-            double medField; // median of Fielder vector
-            mat lMat, dMat, wMat; // matrices used in computation of graph Laplacian
-            mat adjMatSub, distMatSub; // storage for recursive subsetting of adjacency and distance matrices
-            uvec index; // index for subsetting whole domain
-            vec fieldRelx; // Fielder vector storage object
-            uvec fieldDscr; // Discretized Fielder vector
-            f_temp.zeros(no_nodes);
-
-            for (int b = 0; b < bisec; b++) {
-                fUnq = unique(f_temp); // current clusters
-                for (int i = 0; i < fUnq.n_rows; i++) {
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////// Generate graph Laplician //////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                    index = find(f_temp == fUnq(i)); // indices of subdomain i
-                    distMatSub = distMat.submat(index, index); // subset distance matrix
-                    wMat = distMatSub;
-                    wMat(find(wMat)) //locate non-zero elements (off-d)
-                            = pow(wMat(find(wMat)), -1); // edge weights defined as inverse of distance for cut selection
-                    adjMatSub = adjMat.submat(index, index);
-                    wMat %= adjMatSub; // weighted adjacency matrix
-                    dMat.zeros(index.n_rows, index.n_rows);
-                    dMat.diag() = sum(wMat, 1); // diagonal weighted degree matrix
-                    lMat = dMat - wMat; // graph Laplacian
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////// Compute Fielder vector and use to bisec (sub)domain /////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                    vec eigval; // eigenvalue storage object
-                    mat eigvec; // eigenvector storage object
-                    eig_sym(eigval, eigvec, lMat); // eigen decomposition
-                    fieldRelx = eigvec.col(1);
-                    medField = median(fieldRelx);
-                    fieldDscr.zeros(fieldRelx.n_rows);
-                    fieldDscr(find(fieldRelx >= medField)).ones(); // discretize Fielder vector by median
-                    f_temp(find(f_temp == fUnq(i))) = 1 + max(f_temp) + fieldDscr; // define new factor level
-                    if (sum(fieldDscr) != fieldDscr.n_rows / 2) { // check new subdomains are balanced
-                        printf("Unbalanced subdomain");
-                        fflush(stdout);
-                        unb++;
-                        stop = true;
-                        break;
-                    }
-
-                    for (int j=0; j<2; j++) { // check new subdomains each connected
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////// Compute subdomain graph Laplacian and check lambda[2] > 0 ///////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-                        index = find(fieldDscr == j); // ambiguous redeclaration
-                        wMat = distMatSub.submat(index, index); // subset distance matrix
-                        wMat(find(wMat)) //locate non-zero elements (off-d)
-                                = pow(wMat(find(wMat)), -1); // edge weights defined as inverse of distance for cut selection
-                        wMat %= adjMatSub.submat(index, index); // weighted adjacency matrix
-                        dMat.zeros(index.n_rows, index.n_rows);
-                        dMat.diag() = sum(wMat, 1); // diagonal weighted degree matrix
-                        lMat = dMat - wMat; // graph Laplacian
-                        eig_sym(eigval, eigvec, lMat);
-                        index = find(eigval < 1e-10); // search for zero eigenvalues
-                        if (index.n_rows > 1) {
-                            printf("Unconnected subdomain");
-                            fflush(stdout);
-                            unc++;
-                            stop = true;
-                            break;
-                        }
-                    }
-
-                    if (stop) { break; }
-                }
-
-                if (stop) { break; }
-            }
-
-            if (stop) { continue; }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////// Reset fVec from zero and order network by decomposition ////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-            cout << "partitioning successful" << endl;
-            f_temp -= min(f_temp); // reset numbering to 0:(2^sppPool.topo.bisec-1)
-            network.resize(network.n_rows, network.n_cols+1);
-            network = network.rows(sort_index(f_temp)); // reorder network by decomposition
-            f_temp = f_temp.elem(sort_index(f_temp));
-            network = network.cols(0,1);
-            fVec = f_temp; // save indicator vector
-            uvec unq = unique(fVec);
-            uvec count;
-            count.zeros(unq.n_rows);
-            cFVec.set_size(fVec.n_rows);
-            for (int i = 0; i < fVec.n_rows; i++) {
-                cFVec(i) = count(fVec(i));
-                count(fVec(i))++;
-            }
-            printf("Graph reseeded %d/%d times due to unbalanced/unconnected subdomains\n", unb, unc);
-        } while (stop);
-    } else {
-        if (netImprtd.n_rows == 0) {
-            network.reset();
-            distMat.reset();
-            adjMat.reset();
-            printf("\rGenerating cartesian coordinates and distance matrix without decomposition... ");
-            genNetwork();
-            if (envVar != 0) { // generate enviroment
-                genEnvironment();
-            }
-        } else {
-            genDistMat();
-            genAdjMat();
-        }
-        if (scMatFileName.length() != 0) { // import scaling matrix
-            cout << "\nImporting scaling matrix " << scMatFileName << endl;
-            mat Sc;
-            Sc.load(scMatFileName);
-            scVec_prime = Sc.col(0);
-            scVec = Sc.col(1);
-        }
+    if (netImprtd.n_rows == 0) {
+        genNetwork();
+    }
+    genDistMat();
+    genAdjMat();
+    if ((envVar != 0) && (envMatFileName.length() == 0) && envMat.n_rows == 0) { // generate enviroment
+        cout << "\nGenerating abiotic environment" << endl;
+        genEnvironment();
+    }
+    if (scMatFileName.length() != 0) { // import scaling matrix
+        cout << "\nImporting scaling matrix " << scMatFileName << endl;
+        mat Sc;
+        Sc.load(scMatFileName);
+        scVec_prime = Sc.col(0);
+        scVec = Sc.col(1);
     }
 }
 

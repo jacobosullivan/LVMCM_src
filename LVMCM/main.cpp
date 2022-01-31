@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM) ////////////////////////
+/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (LVMCM) ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Jacob Dinner O'Sullivan -- j.osullivan@qmul.ac.uk | j.osullivan@zoho.com ///////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7,11 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -25,9 +25,14 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+
+
+/*
+ * NEED TO UPDATE THE COMPUTION OF U*D_m IN PARALLEL ALGORITHM TO ACCOMODATE THE DISTRIBUTION IN EMIGRATION RATES
+ */
+
 #include <iostream>
 #include <stdio.h>
-#include <mpi.h>
 #include <armadillo>
 #include <vector>
 #include <cstdlib>
@@ -38,6 +43,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <chrono>
+#include <ctime>
 
 #include "Metacommunity.h"
 #include "LVMCM_rng.h"
@@ -61,6 +68,7 @@ int BETA_T_INVASION = 0; // select generate trajectory matrices after each invas
 int FIX_SEED = 0; // if 0 , all seeds random, if 1 landscape seed fixed, if 2 all seeds fixed
 bool NODE_REMOVAL = false; // select node removal experiment
 string DD_SOL_PATH = {}; // path to location for dd solution output
+bool ASSEMBLY_VIDEO = false;
 
 // Storage for setjmp/longjmp
 jmp_buf jump_buffer;
@@ -68,8 +76,8 @@ jmp_buf jump_buffer_continue_assembly;
 
 // Global Metacommunity object and timing variables
 Metacommunity meta;
-time_t time1, time2;
-double mpi_time1, mpi_time2;
+std::chrono::time_point<std::chrono::system_clock> time1, time2;
+std::chrono::duration<double> elapsed_time;
 int g_seed;
 
 // CVode tolerances
@@ -86,6 +94,8 @@ int main(int argc, char* argv[]) {
     time(&start);
     int sim = 1; // simulation switch
 
+    cout << "WARNING: Handling of compartment indices after regional invasion AND extinction not currently compatible with bipartite model" << endl;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////// Store program arguments in variables ///////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,9 +105,8 @@ int main(int argc, char* argv[]) {
     string a_bMat = {};
     string a_xMat = {};
     string a_scMat = {};
+    string a_envMat = {};
     int a_invMax = 0;
-    int a_iterS = 2;
-    int a_deltaT = 100;
     int a_tMax = 500;
     int a_perfRep = 0;
     int a_perfS = 0;
@@ -113,7 +122,7 @@ int main(int argc, char* argv[]) {
     // Default Species parameters
     double a_c1 = 0.5;
     double a_c2 = 0.5;
-    double a_c3 = 0.0;
+    double a_c3 = -1;
     double a_emRate = 0.1;
     double a_dispL = 0.1;
     double a_pProducer = 1.0;
@@ -129,13 +138,14 @@ int main(int argc, char* argv[]) {
 
     // Default Topograpy parameters
     int a_no_nodes = 4;
-    double a_phi = 1;
+    int a_lattice_width = 0;
+    int a_lattice_height = 0;
+    double a_phi = 5;
     int a_envVar = 0;
     vec a_skVec = {0.0};
     double a_var_e = 0.01;
     bool a_randGraph = true;
     bool a_gabriel = true;
-    int a_bisec = 0;
     double a_T_int = -1;
     double a_dTdt = 0.0;
     int a_edges = 1;
@@ -147,7 +157,7 @@ int main(int argc, char* argv[]) {
     double a_parOut = 0;
     string a_experiment = "DEFAULT";
     int a_rep = 0;
-    string a_jobID = "NA";
+    string a_path = {};
 
     for (int i = 1; i<argc; i++) { // loop through program arguments an allocate to parameters
         char var1 = argv[i][1];
@@ -181,18 +191,22 @@ int main(int argc, char* argv[]) {
                         i++;
                         a_dispL = atof(argv[i]);
                         break;
-                    case 'd' : // set jobID - job ID used for automatic checkpointing (string)
-                        DD_SOL_PATH = argv[i];
-                        break;
                     case 'n' : // set normalization of dispersal model
                         a_dispNorm = atoi(argv[i]);
                         break;
-
+ 
                 }
                 break;
 
-            case 'e' : // set envVar - number of explicitly modelled environmental variables (int)
-                a_envVar = atoi(argv[i]);
+            case 'e' :
+                switch (var2) {
+                    case '0' : // set envVar - number of explicitly modelled environmental variables (int)
+                        a_envVar = atoi(argv[i]);
+                        break;
+                    case 'm' : // set path to data for environment matrix
+                        a_envMat = argv[i];
+                        break;
+                }
                 break;
 
             case 'f' : // set outputDirectory - location for write to file (string)
@@ -205,13 +219,15 @@ int main(int argc, char* argv[]) {
                 a_invasionSize = 0; // This will ensure gamma is not exceeded but if gamma set high, will slow assembly
                 break;
 
+            case 'h' : // set h - height of lattice
+                a_randGraph = false;
+                a_lattice_height = atoi(argv[i]);
+                break;
+
             case 'i' :
                 switch (var2) {
                     case '0' : // set invMax - total number of invasions (int)
                         a_invMax = atoi(argv[i]);
-                        break;
-                    case 'd' : // set jobID - job ID used for automatic checkpointing (string)
-                        a_jobID = argv[i];
                         break;
                     case 's' : // set proportion of extra new invaders in each iteration (double)
                         a_invasionSize = atof(argv[i]);
@@ -254,11 +270,6 @@ int main(int argc, char* argv[]) {
                     case 'c' : // scFile: path to data for scaling of local interaction matrix
                         a_scMat = argv[i];
                         break;
-                    case 'i' : // set iterS, deltaT - Schwartz iteration and time window (2x int)
-                        a_iterS = atoi(argv[i]);
-                        i++;
-                        a_deltaT = atoi(argv[i]);
-                        break;
                     case 'k' : // sk: environmental sensitivity shape parameter
                         a_envVar = atoi(argv[i]);
                         a_skVec.set_size(a_envVar);
@@ -269,6 +280,7 @@ int main(int argc, char* argv[]) {
                                 i++;
                             }
                         }
+                        a_skVec.print("a_skVec_m");
                         break;
                     case 't' : // set sigma_t - standard deviation of random environmental fluctuation (double)
                         a_sigma_t = atof(argv[i]);
@@ -291,6 +303,10 @@ int main(int argc, char* argv[]) {
 
             case 'v' : // set var_e - variance of base environmental distribution (double)
                 a_var_e = atof(argv[i]);
+                break;
+
+            case 'w' : // set w - width of lattice
+                a_lattice_width = atoi(argv[i]);
                 break;
 
             case 'x' : // xFile: path to data for importing spatial network
@@ -352,6 +368,14 @@ int main(int argc, char* argv[]) {
                 }
                 break;
 
+            case 'V' : // select save matrices for assembly video
+                ASSEMBLY_VIDEO = true;
+                a_path = argv[i];
+
+            case 'X' : // set form of dynamics: 0 - LVMCM; 1 - PSD
+                g_form_of_dynamics = atoi(argv[i]);
+                break;
+
             case 'Z' : // set FIX_SEED: 0 - random seed generated randomly; 1 - network/environment fixed; 2 - all sampling fixed
                 FIX_SEED = atoi(argv[i]);
                 break;
@@ -360,6 +384,7 @@ int main(int argc, char* argv[]) {
             case 'B' : // compute beta t after each invasion
                 BETA_T_INVASION = atoi(argv[i]);
                 break;
+
             case 'F' : // set tMax, cons_percent, cons_phi, cons_rep - select conservation area/fragmentation experiment and set
                        // relaxation time, percent landscape conserved, correlation length of binary conservation area, and replicate number
                        // (int, int, double, int)
@@ -403,8 +428,17 @@ int main(int argc, char* argv[]) {
                 break;
 
             case 'T' : // set autoFluct - store trajectory for studying autonomous fluctuations (bool)
-                ASSEMBLE = false;
-                a_autoFluct = atof(argv[i]);
+                switch(var2) {
+                    case '0' :
+                        ASSEMBLE = false;
+                        a_autoFluct = atof(argv[i]);
+                        break;
+                    case 'T' : // select symmetric competition model
+                        ASSEMBLE = false;
+                        a_autoFluct = atof(argv[i]);
+                        g_block_transitions = true;
+                        break;
+                }
                 break;
 
             case 'W' : // set dTdt - select temperature warming experment and set rate of warming (double)
@@ -416,78 +450,57 @@ int main(int argc, char* argv[]) {
     }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////// Set return clause parallel algorithm ////////////////////////////////////////////
+//////////////////////////////////////////////// Set return clause /////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Metacommunity meta;
-    int rank = 0; // MPI program removed from current version
+        Metacommunity meta;
 
-    if (setjmp(jump_buffer)) { // set return call in longjump clause
-        if (rank == 0) {
+        if (setjmp(jump_buffer)) { // set return call in longjump clause
             time_t finish;
             time(&finish);
-            cout << endl << "Simulation stated at: " << ctime(&start);
+            cout << "\n\nSimulation stated at: " << ctime(&start);
             cout << "Simulation finished at: " << ctime(&finish);
+            return (0);
         }
-        return (0);
-    }
 
-    if (rank == 0) { // start timer and check for parameter errors
-        mpi_time1 = time(nullptr);
+        time1 = std::chrono::system_clock::now();
 
-        if (!a_randGraph) { // check perfect square in case of lattice
-            double srN = sqrt(a_no_nodes);
-            if (floor(srN) - srN != 0) {
-                cout << "\nError: perfect square N expected" << endl;
-                longjmp(jump_buffer, 1);
-            }
-        }
         if (a_emRate < 0) { // check abs(emRate) = 1, required for non-uniform emRate;
             if (a_emRate != -1.0) {
                 cout << "\nError: for non-uniform emigration rate model, emRate = -1.0 required" << endl;
                 longjmp(jump_buffer, 1);
             }
         }
+
         if (a_pProducer < 1) { // check non-zero trophic parameters
             if ((a_alpha == 0) || (a_sigma == 0) || (a_rho == 0)) {
                 cout << "\nError: trophic parameters set to zero!" << endl;
                 longjmp(jump_buffer, 1);
             }
         }
+
         if ((a_prodComp == 1) && (a_comp_dist<3)) { // check non-zero competitive parameters
             if ((a_c1 == 0) || (a_c2 == 0)) {
                 cout << "\nError: competitive parameters set to zero!" << endl;
                 longjmp(jump_buffer, 1);
             }
         }
-        double no_sub = a_no_nodes / pow(2, a_bisec);
-        if (floor(no_sub) - no_sub != 0) { // check bisec/no_nodes correspond
-            cout << "\nError: N / 2^bisec non-integer" << endl;
+
+        if (((a_lattice_height != 0) && (a_lattice_width == 0)) || ((a_lattice_height == 0) && (a_lattice_width != 0))) { // check lattice dimensions
+            cout <<  a_lattice_height << " " << a_lattice_width << endl;
+            cout << "\nError: Missing lattice dimension!" << endl;
             longjmp(jump_buffer, 1);
         }
 
-        if (a_deltaT != 0) {
-            double tM_dT = a_tMax / a_deltaT;
-            if (floor(tM_dT) - tM_dT != 0) { // check tMax/deltaT correspond
-                cout << "\nError: tMax / deltaT non-integer" << endl;
-                longjmp(jump_buffer, 1);
-            }
+        if (a_outputDirectory.length() == 0) { // check output directory set
+            cout << a_outputDirectory << endl;
+            cout << "Warning: no output directory given" << endl;
         }
-        if (OUTPUT) {
-            if (a_outputDirectory.length() == 0) { // check output directory set
-                string homedir = getenv("HOME");
-                a_outputDirectory = homedir+"/LVMCM_src/";
-                cout << "\nWarning: no output directory given" << endl;
-                cout << "Saving data into " << a_outputDirectory << endl << endl;
-            }
-        }
-    }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////// Set random seeds 1  //////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    if (rank == 0) {
         if (FIX_SEED > 0) {
             g_seed = 1;
         } else {
@@ -495,25 +508,15 @@ int main(int argc, char* argv[]) {
             std::random_device rd;
             g_seed = rd();
         }
-    }
 
-    cout << "Random seed seen by process " << rank << " " << g_seed << endl;
-
-    LVMCM_rng::boost_rng.seed(g_seed);
-    arma_rng::set_seed(g_seed);
+        LVMCM_rng::boost_rng.seed(g_seed);
+        arma_rng::set_seed(g_seed);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////// Parameterize parallel assembly model ///////////////////////////////////////////
+/////////////////////////////////////////// Parameterize assembly model ////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    if (rank == 0) { // parameterize root process using program arguments
-        printf("\nInitializing LVMCM\n\n");
-    }
-
-    { // subdomain initialization scope
-        // parameterize subdomains
-        if (a_init) { // parameterize all processes from program arguments
-
+        { // initialization scope
             meta = Metacommunity(
                     // Metacommunity parameters
                     a_init,
@@ -521,8 +524,6 @@ int main(int argc, char* argv[]) {
                     a_xMat,
                     a_scMat,
                     a_invMax,
-                    a_iterS,
-                    a_deltaT,
                     a_tMax,
                     a_outputDirectory,
                     // Species parameters
@@ -543,178 +544,88 @@ int main(int argc, char* argv[]) {
                     a_dispNorm,
                     // Topograpy parameters
                     a_no_nodes,
+                    a_lattice_height,
+                    a_lattice_width,
                     a_phi,
                     a_envVar,
                     a_skVec,
                     a_var_e,
                     a_randGraph,
                     a_gabriel,
-                    a_bisec,
                     a_T_int,
+                    a_envMat,
                     // output variables
                     a_parOut,
                     a_experiment,
-                    a_rep,
-                    a_jobID);
-            if (rank == 0) {
-                cout << "output folder set to " << meta.outputDirectory << endl;
-                meta.printParams();
-            }
-        }
+                    a_rep);
+            meta.printParams();
+        } // initialization scope
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////// Broadcast imported metacommunity objects   //////////////////////////////////////
+/////////////////////////////////////// Generate topo - topography/environment /////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        if (!a_init) { // broadcast imported metacommunity model objects and parameters to non-root processes
-            int S_p, S_c, prodComp, envVar;
-            if (rank == 0) {
-                meta = Metacommunity(
-                        // Metacommunity parameters
-                        a_init,
-                        a_bMat,
-                        a_xMat,
-                        a_scMat,
-                        a_invMax,
-                        a_iterS,
-                        a_deltaT,
-                        a_tMax,
-                        a_outputDirectory,
-                        // Species parameters
-                        a_c1,
-                        a_c2,
-                        a_c3,
-                        a_emRate,
-                        a_dispL,
-                        a_pProducer,
-                        a_prodComp,
-                        a_symComp,
-                        a_alpha,
-                        a_sigma,
-                        a_sigma_t,
-                        a_rho,
-                        a_comp_dist,
-                        a_omega,
-                        a_dispNorm,
-                        // Topograpy parameters
-                        a_no_nodes,
-                        a_phi,
-                        a_envVar,
-                        a_skVec,
-                        a_var_e,
-                        a_randGraph,
-                        a_gabriel,
-                        a_bisec,
-                        a_T_int,
-                        // output variables
-                        a_parOut,
-                        a_experiment,
-                        a_rep,
-                        a_jobID);
-                if (rank == 0) {
-                    cout << "output folder set to " << meta.outputDirectory << endl;
-                    meta.printParams();
-                }
-                S_p = meta.sppPool.rMat.n_rows;
-                S_c = meta.sppPool.bMat_p.n_rows - S_p;
-                prodComp = meta.sppPool.prodComp;
-                envVar = meta.sppPool.topo.envVar;
-            }
-        }
-    } // subdomain initialization scope
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////// Generate topo - topography/environment (root) ////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    { // domain decomposition scope
-        if (rank == 0) {
+        { // abiotic modelling scope
             if (a_init) {
-                meta.sppPool.topo.genDomainDecomp(); // generate and decompose landscape
-                meta.sppPool.genDispMat();
+                meta.spp.topo.genLandscape(); // generate landscape
+                meta.spp.genDispMat();
             } else {
-                meta.sppPool.topo.genDomainDecomp(
-                    meta.sppPool.topo.network); // decompose imported topo
+                meta.spp.topo.genLandscape(
+                    meta.spp.topo.network); // import network
             }
-
-            unique(meta.sppPool.topo.fVec.t()).print("\nf.unique");
-            if (ASSEMBLE) {
-                meta = meta; // store copy of complete domain at root process for outputting and extinction testing
-            }
-        }
-        meta.rank = rank; // store rank for signal handler
-    } // domain decomposition scope
+        } // abiotic modelling scope
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////// Simulation /////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        if (rank == 0) {
-            printf("\nStarting assembly\n");
-        }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////// Set random seeds 2  //////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     if (FIX_SEED == 1) {
-        if (rank == 0) {
-            // generate random seed for invaders
-            std::random_device rd;
-            g_seed = rd();
-        }
-        cout << "Random seed (species only) seen by process " << rank << " " << g_seed << endl;
+        // generate random seed for invaders
+        std::random_device rd;
+        g_seed = rd();
+
         LVMCM_rng::boost_rng.seed(g_seed);
         arma_rng::set_seed(g_seed);
     }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////// Initialize MPI buffers //////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     setjmp(jump_buffer_continue_assembly);
 
     if (ASSEMBLE) {
-
         { // assembly scope
-
             // initialise objects
-            mat B_p, BStore_p, BStore_c, U_p, Ub_p, Tr, R, S, Cr, Cc; // MPI buffers
-            mat B_dd; // for storage of domain decomposed solution if required
-            int t, it, T = meta.tMax/meta.deltaT; // number of Schwarz time windows
+            int t;
             int no_invaders_p, no_residents_p, no_extinct_p, no_invaders_c, no_residents_c, no_extinct_c; // counters
 
-            // reset seed for invader sampling (required to ensure all processes synced for invader sampling)
             LVMCM_rng::boost_rng.seed(g_seed);
             arma_rng::set_seed(g_seed);
 
             do {
 
-                meta.sppPool.invEvent++;
+                meta.spp.invEvent++;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////// Generate invader (all subdomains in parallel) ///////////////////////////////////////////
+///////////////////////////////////////////// Generate invader /////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                 { // invader testing scope
                     // select number of invaders and sample their trophic levels
-                    int S_p0 = meta.sppPool.S_p; // record diversity prior to invader testing
-                    int S_c0 = meta.sppPool.S_c;
+                    int S_p0 = meta.spp.S_p; // record diversity prior to invader testing
+                    int S_c0 = meta.spp.S_c;
 
                     // select number of invaders and sample their trophic levels
                     int no_trophLev[2] = {0}; // no producers, consumers to invade
-                    int no_invaders = a_invasionSize * (meta.sppPool.S_p + meta.sppPool.S_c) + 1;
+                    int no_invaders = a_invasionSize * (meta.spp.S_p + meta.spp.S_c) + 1;
 
-                    if (meta.sppPool.pProducer < 1) { // bipartite
+                    if (meta.spp.pProducer < 1) { // bipartite
                         // random uniform variables generated for allocating trophic level
                         vec trophLev(no_invaders);
-                        int seedProd = 5;
-                        if (meta.sppPool.bMat_p.n_rows > seedProd) { // seed metacommunity with at least seedProd producers
+                        int seedProd = 5; // minimum number of producer prior to introducing consumers
+                        if (meta.spp.xMat.n_rows > seedProd) { // seed metacommunity with at least seedProd producers
                             trophLev.randu();
                         } else {
                             trophLev.zeros();
                         }
-                        uvec invaderIndex = find(trophLev <= meta.sppPool.pProducer);
+                        uvec invaderIndex = find(trophLev <= meta.spp.pProducer);
                         no_trophLev[0] = invaderIndex.n_rows; // number of producers to invade
                         no_trophLev[1] = no_invaders - no_trophLev[0]; // number of consumers to invade
                     } else {
@@ -727,160 +638,155 @@ int main(int argc, char* argv[]) {
                         if (no_trophLev[tL] == 0) {
                             continue;
                         } else {
-
-                            do {
-                                // sample random invaders and simulate dynamics
-                                spp_tested += no_trophLev[tL]*2;
-                                uvec posGrowth = meta.invaderSample(tL, no_trophLev[tL]);
-
-                                // select desired number of invaders with positive growth rates
-                                suc_inv += posGrowth.n_rows;
-                                posGrowth.resize(min((int) posGrowth.n_rows, no_trophLev[tL]));
-
-                                // remove unsucessful/excess invaders
-                                mat bInv_max;
-                                bInv_max = meta.invaderCleanup(tL, posGrowth);
-
-                                if (posGrowth.n_rows == 0) { // in this case all processes restart invader testing
-                                    meta.invaderPopulate(tL, bInv_max);
-                                    continue;
-                                }
-
-                                // populate interaction coefficients and reset invader biomass
-                                meta.invaderPopulate(tL, bInv_max);
-                                no_trophLev[tL] -= (int) posGrowth.n_rows;
-                            } while (no_trophLev[tL] > 0);
-                        }
-
-                        // record numerical invasion probability
-                        meta.invasionProb.resize(meta.sppPool.invEvent, 2);
-                        if (tL == 0) {
-                            meta.invasionProb(meta.sppPool.invEvent - 1, tL) =
-                                    suc_inv / spp_tested;
-                        } else if (tL == 1) {
-                            meta.invasionProb(meta.sppPool.invEvent - 1, tL) =
-                                    suc_inv / spp_tested;
+                            // sample random invaders and simulate dynamics
+                            spp_tested += no_trophLev[tL]*2; // ?
+                            meta.invaderSample(tL, no_trophLev[tL]);
                         }
                     }
 
-                    if (rank == 0) { // update cMat for both producer and consumer invasions
-                        meta.sppPool.cMat = meta.sppPool.cMat; // straight copy since C is not spatially decomposed
-                    }
-
-                    meta.sppPool.invasion += no_invaders;
+                    meta.spp.invasion += no_invaders; // record cummulative number of invasions
                 } // invader testing scope
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////// Simulate dynamics ///////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
                 { // dynamics scope
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////// Undecomposed numerical solution /////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                     meta.metaCDynamics(meta.tMax); // simulate metacommunty dynamics
-
                 } // dynamics scope
-
-                { // extinction scope
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////// Remove extinct species /////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                    meta.sppPool.extinct(); // remove extinct species
-                    meta.sppPool.S_p = meta.sppPool.rMat.n_rows;
-                    meta.sppPool.S_c = meta.sppPool.bMat_p.n_rows - meta.sppPool.rMat.n_rows;
+                { // extinction scope
+                    meta.spp.extinct(); // remove extinct species
+                    meta.spp.S_p = meta.spp.rMat.n_rows; // update richness counters
+                    meta.spp.S_c = meta.spp.xMat.n_rows - meta.spp.rMat.n_rows; // update richness counters
                 } // extinction scope
 
                 if (BETA_T_INVASION > 0) {
+                    // compute time series after every invasion to demonstrate emergence of autonomous turnover
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////// Generate unsaturated trajectory /////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                    meta.storeTraj = -1 * meta.sppPool.invasion;
+                    meta.storeTraj = -1 * meta.spp.invasion;
                     meta.metaCDynamics(BETA_T_INVASION); // simulate metacommunty dynamics
                     meta.storeTraj = 0;
                 }
 
-                if (rank == 0) {
-                    mat presAbs;
-                    presAbs.zeros(meta.sppPool.bMat_p.n_rows, meta.sppPool.bMat_p.n_cols);
-                    double thresh = 1e-4;
-                    presAbs.elem(find(meta.sppPool.bMat_p > thresh)).ones();
-                    rowvec alpha = sum(presAbs,0);
+                printf("\rInvasions / S_p / S_c = %d / %d / %d         ",
+                       meta.spp.invasion, (int) meta.spp.rMat.n_rows, (int) meta.spp.xMat.n_rows - (int) meta.spp.rMat.n_rows);
+                fflush(stdout);
 
-                    printf("\rInvasions / S_p / S_c = %d / %d / %d         ",
-                           meta.sppPool.invasion, (int) meta.sppPool.rMat.n_rows, (int) meta.sppPool.bMat_p.n_rows - (int) meta.sppPool.rMat.n_rows);
-                    fflush(stdout);
-
-                    if (a_g_max > 0) { // select regional number of species
-                        if (meta.sppPool.bMat_p.n_rows == a_g_max) {
-                            sim = 0; // switch simulation off
-                        }
-                    } else if (meta.sppPool.invasion >= meta.invMax) {
+                if (ASSEMBLY_VIDEO) { // saves key matrix objects after each invasion to show assembly process
+                    meta.saveVideo(a_path);
+                }
+                
+                if (a_g_max > 0) { // select regional number of species
+                    if (meta.spp.xMat.n_rows >= a_g_max) { // stop simulation once externally defined regional diversity reached
                         sim = 0; // switch simulation off
                     }
+                } else if (meta.spp.invasion >= meta.invMax) { // stop simulation once externally define no invasions reached
+                    sim = 0; // switch simulation off
                 }
+
+                if (SNAPSHOT) { // write to file after every invasion
+                    meta.saveMC();
+                }
+
             } while (sim);
         } // assembly scope
-
-        if (rank == 0) {
-            mpi_time2 = time(nullptr);
-        }
     }
+
+    time2 = std::chrono::system_clock::now();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////// Final book keeping /////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        if (rank == 0) {
+    if (OUTPUT) { // write to file if requested
 
-            if (OUTPUT) {
+        if (ASSEMBLE) { // standard book keeping, assembly algorithm
+            meta.metaCDynamics(1e4); // final relaxation
+            meta.spp.extinct(); // final relaxation
+            meta.spp.S_p = meta.spp.rMat.n_rows; // final relaxation
+            meta.spp.S_c = meta.spp.xMat.n_rows - meta.spp.S_p; // final relaxation
+            elapsed_time = time2 - time1;
+            meta.simTime += elapsed_time.count(); // record assembly time
+            meta.saveMC();
 
-                if (meta.sppPool.topo.consArea_bin.n_rows > 0) {
-                    ASSEMBLE = false; // write to file handled by perturbation clause in case of continued assemblies
-                    a_write_continue_assembly = true;
-                }
-                if (ASSEMBLE) {
-                    meta.metaCDynamics(1e4); // final relaxation
-                    meta.sppPool.extinct();
-                    meta.sppPool.S_p = meta.sppPool.rMat.n_rows;
-                    meta.sppPool.S_c = meta.sppPool.bMat_p.n_rows - meta.sppPool.S_p;
-                    time(&time2); // stop timing
-                    meta.simTime += time2 - time1; // record assembly time
-                    meta.outputData();
+            printf("\n\nDetermining source-sink populations...");
+            meta.genSourceSink();
+            meta.saveMC();
+        }
 
-                    printf("\n\nDetermining source-sink populations...");
-                    meta.genSourceSink();
-                    meta.outputData();
-                }
+        if (SOURCE_SINK) { // if source sink only requested
+            printf("\n\nGenerating source sink matrix...");
+            meta.metaCDynamics(1e4); // final relaxation
+            meta.spp.extinct();
+            meta.spp.S_p = meta.spp.rMat.n_rows;
+            meta.spp.S_c = meta.spp.xMat.n_rows - meta.spp.S_p;
+            meta.saveMC();
+            meta.genSourceSink();
+            meta.saveMC();
+        }
 
-                if (SOURCE_SINK) {
-                    printf("\n\nGenerating source sink matrix...");
-                    meta.metaCDynamics(1e4); // final relaxation
-                    meta.sppPool.extinct();
-                    meta.sppPool.S_p = meta.sppPool.rMat.n_rows;
-                    meta.sppPool.S_c = meta.sppPool.bMat_p.n_rows - meta.sppPool.S_p;
-                    meta.outputData();
-                    meta.genSourceSink();
-                    meta.outputData();
-                }
+        if (CMAT_REG) { // if harvest only requested
+            printf("\n\nGenerating regional scale interaction matrix...");
+            meta.genCMatReg();
+            meta.saveMC();
+        }
 
-                if (CMAT_REG) {
-                    printf("\n\nGenerating regional scale interaction matrix...");
-                    meta.genCMatReg();
-                    meta.outputData();
-                }
+        if (a_autoFluct) { // if time series only requested
+            meta.metaCDynamics(1e4); // final relaxation
+            meta.spp.extinct();
+            meta.spp.S_p = meta.spp.rMat.n_rows;
+            meta.spp.S_c = meta.spp.xMat.n_rows - meta.spp.S_p;
+            meta.saveMC();
+            printf("\n\nGenerating static environment trajectory...");
+            meta.storeTraj = 1; // store trajectories in (NxS)xtRelax object
+            meta.metaCDynamics(a_autoFluct);
+        }
 
-                if (a_autoFluct) {
-                    meta.metaCDynamics(1e4); // final relaxation
-                    meta.sppPool.extinct();
-                    meta.sppPool.S_p = meta.sppPool.rMat.n_rows;
-                    meta.sppPool.S_c = meta.sppPool.bMat_p.n_rows - meta.sppPool.S_p;
-                    meta.outputData();
-                    printf("\n\nGenerating static environment trajectory...");
-                    meta.storeTraj = 1; // store trajectories in (NxS)xtRelax object
-                    meta.metaCDynamics(a_autoFluct);
-                }
+        if (FLUCTUATE) { // if time series, fluctuating environment requested
+            printf(" Generating dynamic environment trajectory...");
+            meta.storeTraj = 2; // concatenate static/dynamic environment trajectories
+            int tRelax = 200; // relaxtion time for trajectories object
+            for (int t = 0; t < tRelax; t++) { // simulate temporally fluctuating environment
+                meta.envFluct();
             }
         }
+
+        if (WARMING) { // if warming experiment requested
+            // Begin with static environment step to demonstrate degree of autonomous fluctuations
+            printf("\n\nGenerating static environment trajectory...");
+            meta.storeTraj = 1; // store trajectories in (NxS)xtRelax object
+            int tRelax = 100; // relaxtion time for trajectories object
+
+            // Dial up intercept of temperature gradient, driving temperature optima to the right
+            printf("\n\nSimulating regional warming...");
+            meta.storeTraj = 1; // concatenate static/dynamic environment trajectories
+            meta.spp.topo.T_int = 1.0; // required for importing models prior to adding T_int to output command
+            tRelax = 10000; // relaxtion time for warming experiment object
+            int res = 100;
+            for (int t = 0; t < (tRelax / res); t++) { // simulate temporally fluctuating environment
+                cout << "\nYear " << t << endl;
+                meta.warming(a_dTdt, res, t);
+            }
+        }
+
+        if (LONGDISTDISP) { // if long distance dispersal experiment requested
+            printf("Randomly allocating long distance spatial coupling...\n");
+            meta.longDistDisp(a_tMax, a_edges);
+        }
+
+        if (NODE_REMOVAL) { // if site removal experiment requested
+            printf("Removing nodes and simulating dynamics...\n");
+            meta.storeTraj=3;
+            meta.nodeRemoval(a_tMax, a_nodeRemoval);
+        }
+    }
     longjmp(jump_buffer, 1); // jump to return
 }
 

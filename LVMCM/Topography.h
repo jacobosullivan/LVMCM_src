@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (pLVMCM) ////////////////////////
+/////////////////////// The parallelizable Lotka-Volterra Metacommunity assembly Model (LVMCM) ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Jacob Dinner O'Sullivan -- j.l.dinner@qmul.ac.uk | j.osullivan@zoho.com ////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7,11 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
-    Copyright (C) 2020  Jacob D. O'Sullivan, Axel G. Rossberg
+    Copyright (C) 2022  Jacob D. O'Sullivan, Axel G. Rossberg
 
-    This file is part of pLVMCM
+    This file is part of LVMCM
 
-    pLVMCM is free software: you can redistribute it and/or modify
+    LVMCM is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -25,7 +25,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//////////////////////////////////// PRE-RELEASE VERSION, PLEASE DO NOT DISTRIBUTE /////////////////////////////////////
+
 
 /*
  * This class contains the members and methods required for generating and storing the abiotic component of the model
@@ -42,18 +42,17 @@ using namespace arma;
 class Topography {
 public:
 // members
-    unsigned int subdomain = 0; // subdomain identifier
-    uvec subdom_nodes; // subdomain node indices
-
     // parameters
     int no_nodes; // number of nodes (patches) in graph (metacommunity)
-    int bisec; // number of bisections for domain decomposition
+    int lattice_height; // height of lattice
+    int lattice_width; // width of lattice
     int envVar; // number of environmental variables
     double var_e; // variance of the environmental distribution (implicit or explicit)
     double phi; // environmental autocorrelation length
-    double T_int; // Intercept of linear temperature gradient
-    string xMatFileName; // path to file name for imported network
-    string scMatFileName; // path to file name for imported local scaling
+    double T_int = -1; // Intercept of linear temperature gradient
+    string xMatFileName; // path to file for imported network
+    string scMatFileName; // path to file for imported local scaling
+    string envMatFileName; // path to file for imported environment
     vec skVec; // vector of shape parameters defining environmental sensitivity
 
     // switches
@@ -67,11 +66,10 @@ public:
     mat sigEVec; // Eigenvectors of spatial covariance matrix
     mat sigEVal; // Eigenvalues of spatial covariance matrix
     mat adjMat; // spatial adjacency matrix
-    uvec fVec; // indicator vector for domain decomposition
     uvec cFVec; // cumilatively count nodes in subdomains
-    uvec intIF; // internal interface nodes
-    uvec adjIF; // adjacent interface nodes
     mat envMat; // envVarxN matrix encoding the spatial distribution in enviromental variables
+    vec rangeEnv; // record range of environmental variables for sampling optima
+    vec minEnv; // record min of environmental variables for sampling optima
 
     vec consArea_bin; // binary vector for allocating conservation area
     vec scVec; // local interspecific interaction scaling
@@ -82,7 +80,7 @@ public:
     void genNetwork(); // generate random network
     void genDistMat(); // generate distance matrix
     void genAdjMat(); // generate adjacency matrix
-    void genDomainDecomp(mat netImprtd = {}); // domain decomposition algorithm
+    void genLandscape(mat netImprtd = {}); // wrapper for abiotic modelling functions
     void genEnvironment(); // Samples from envVar GRFs and stores values in environment matrix
     void genTempGrad(); // generate linear temperature gradient T(x) = T_int - sqrt(N)*x
 
