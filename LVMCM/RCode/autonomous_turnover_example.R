@@ -77,7 +77,7 @@ if (ANALYSE_DATA) {
   }
   write.csv(dat, "~/LVMCM_src/LVMCM/autonomous_turnover_example/autonomous_turnover_example.csv", row.names=F)
 } else {
-  dat <- read.csv("~/LVMCM_src/LVMCM/autonomous_turnover_example/autonomous_turnover_example.csv")
+  dat <- read.csv("~/Software/LVMCM_publish_version/LVMCM_src/LVMCM/autonomous_turnover_example/autonomous_turnover_example.csv")
 }
 
 datS <- data.frame(inv=rep(dat$inv, 2),
@@ -118,6 +118,21 @@ p5B <- ggplot(subset(datB, distr=="discr"), aes(x=it, y=beta, linetype=factor(le
 grid.arrange(p5A,p5B,ncol=2)
 
 ### Gen Fig S4
+# Local interaction matrices at end state
+Ad <- as.matrix(read.table("~/LVMCM_src/SimulationData/N=32/discrTraj_experiment/2021-3-1/2021-3-1_discrTraj(10000)1cMat0.mat"))
+Ab <- as.matrix(read.table("~/LVMCM_src/SimulationData/N=32/betaDiscrTraj04_experiment/2021-3-1/2021-3-1_betaDiscrTraj04(10000)1cMat0.mat")) 
+An <- as.matrix(read.table("~/LVMCM_src/SimulationData/N=32/normDiscrTraj04_experiment/2021-3-1/2021-3-1_normDiscrTraj04(10000)1cMat0.mat"))
+
+datA <- data.frame(A_ij = c(Ad[upper.tri(Ad)],
+                            Ad[lower.tri(Ad)],
+                            Ab[upper.tri(Ab)],
+                            Ab[lower.tri(Ab)],
+                            An[upper.tri(An)],
+                            An[lower.tri(An)]),
+                   distr = c(rep("D", nrow(Ad)*(nrow(Ad)-1)),
+                             rep("B", nrow(Ab)*(nrow(Ab)-1)),
+                             rep("N", nrow(An)*(nrow(An)-1))))
+
 pS4A <- ggplot(datS, aes(x=it, y=S, col=factor(distr), linetype=factor(level))) +
   geom_line() +
   theme_bw() +
@@ -139,5 +154,19 @@ pS4B <- ggplot(datB, aes(x=it, y=beta, col=factor(distr), linetype=factor(level)
   scale_linetype_manual(values=c(1,3), labels=c(expression(bar(beta)[s]), expression(bar(beta)[t]))) +
   labs(x="Time (iterations of assembly model)", y="Mean BC dissimilarity", col="Distribution", linetype="")
 
-grid.arrange(pS4A,pS4B, ncol=2)
+pS4C <- ggplot(subset(datA, A_ij != 0.0), aes(x=A_ij, fill=distr, group=distr)) +
+  geom_histogram(col="black", alpha=0.3, position="identity") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(fill="Distribution", x=expression(A[ij]), y="")
+
+pdf("~/pCloudDrive/PhD/Written content/AutonomousFluctuations/submission/nature_comms_resub/revisions/si_ma_sensitivity.pdf",
+    16,4)
+grid.arrange(pS4A,pS4B,pS4C, ncol=3)
+dev.off()
+
+nrow(subset(datA, distr== "D" & A_ij == 0.0)) / nrow(subset(datA, distr== "D")) 
+nrow(subset(datA, distr== "B" & A_ij == 0.0)) / nrow(subset(datA, distr== "B")) 
+nrow(subset(datA, distr== "N" & A_ij == 0.0)) / nrow(subset(datA, distr== "N")) 
 
